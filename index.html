@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#080808">
+  <title>Habit Tracker</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body { background: #080808; min-height: 100vh; overscroll-behavior: none; color: #F2F2F2;
+      font-family: 'Aptos','Calibri','Segoe UI',system-ui,sans-serif; }
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type=number] { -moz-appearance: textfield; }
+    ::-webkit-scrollbar { display: none; }
+    #loading { position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+      font-size:10px;letter-spacing:3px;text-transform:uppercase;color:#888888;background:#080808;z-index:9999; }
+  </style>
+</head>
+<body>
+  <div id="loading">Loading</div>
+  <div id="root"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+  <script>
+    firebase.initializeApp({
+      apiKey: "AIzaSyA2VVj3lfGxuc6UwshczjUZ8zhAYnwG_OA",
+      authDomain: "habit-trackr-ddd47.firebaseapp.com",
+      projectId: "habit-trackr-ddd47",
+      storageBucket: "habit-trackr-ddd47.firebasestorage.app",
+      messagingSenderId: "46408310909",
+      appId: "1:46408310909:web:41499eafc99fb81d53d114"
+    });
+    window._auth = firebase.auth();
+    window._db   = firebase.firestore();
+    window._provider = new firebase.auth.GoogleAuthProvider();
+  </script>
+
+  <script type="text/babel">
+    const { useState, useEffect, useCallback, useRef } = React;
+
+    // ── Storage ──────────────────────────────────────────────────
+    var _uid = null;
+    function setUID(uid) { _uid = uid; }
+
+    async function loadData() {
+      if (!_uid) return {};
+      try {
+        const snap = await window._db.collection("users").doc(_uid).collection("data").doc("habitData").get();
+        return snap.exists ? snap.data().value : {};
+      } catch(e) { return {}; }
+    }
+    async function saveData(d) {
+      if (!_uid) return;
+      try { await window._db.collection("users").doc(_uid).collection("data").doc("habitData").set({ value: d }); } catch(e) {}
+    }
+    async function loadHabits() {
+      if (!_uid) return DEFAULT_HABITS;
+      try {
+        const snap = await window._db.collection("users").doc(_uid).collection("data").doc("habitList").get();
+        return snap.exists ? snap.data().value : DEFAULT_HABITS;
+      } catch(e) { return DEFAULT_HABITS; }
+    }
+    async function saveHabits(h) {
+      if (!_uid) return;
+      try { await window._db.collection("users").doc(_uid).collection("data").doc("habitList").set({ value: h }); } catch(e) {}
+    }
+    async function loadProfile() {
+      if (!_uid) return null;
+      try {
+        const snap = await window._db.collection("users").doc(_uid).collection("data").doc("profile").get();
+        return snap.exists ? snap.data() : null;
+      } catch(e) { return null; }
+    }
+    async function saveProfile(p) {
+      if (!_uid) return;
+      try { await window._db.collection("users").doc(_uid).collection("data").doc("profile").set(p); } catch(e) {}
+    }
+    async function deleteAccount() {
+      if (!_uid) return;
+      try {
+        const db = window._db;
+        const uid = _uid;
+        // Delete all data docs
+        const docs = ["habitData","habitList","profile"];
+        for (var i = 0; i < docs.length; i++) {
+          try { await db.collection("users").doc(uid).collection("data").doc(docs[i]).delete(); } catch(e) {}
+        }
+        // Delete user doc
+        try { await db.collection("users").doc(uid).delete(); } catch(e) {}
+        // Delete Firebase Auth user
+        const currentUser = window._auth.currentUser;
+        if (currentUser) { await currentUser.delete(); }
+      } catch(e) { console.error("Delete error:", e); throw e; }
+    }
+
+
+
+// v5 — Habit type logic:
+// restAllowed:true, streakHabit:false  → Done/Miss/Rest
+// restAllowed:false, streakHabit:false → Done/Miss
+// restAllowed:false, streakHabit:true  → Done/Miss/Streak
+// type:"number"                        → Number
+
+const DEFAULT_HABITS = [
+  { id:"gym",    label:"Gym",          type:"bool",   restAllowed:true,  streakHabit:false, createdAt:null },
+  { id:"water",  label:"Water (3L)",   type:"bool",   restAllowed:false, streakHabit:false, createdAt:null },
+  { id:"nofap",  label:"No Fap",       type:"bool",   restAllowed:false, streakHabit:true,  createdAt:null },
+  { id:"sleep",  label:"Sleep (hrs)",  type:"number", restAllowed:false, streakHabit:false, createdAt:null },
+  { id:"weight", label:"Weight (kg)",  type:"number", restAllowed:false, streakHabit:false, createdAt:null },
+];
+
+const DAYS   = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+function toKey(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
+function todayKey() { return toKey(new Date()); }
+function offsetDate(key,delta) { const d=new Date(key+"T12:00:00"); d.setDate(d.getDate()+delta); return toKey(d); }
+function getDaysInMonth(y,m) { return new Date(y,m+1,0).getDate(); }
+
+function calcStreak(id,data) {
+  let s=0, k=todayKey();
+  for(let i=0;i<400;i++){
+    const v=data[k]?.[id];
+    if(v==="Y") s++;
+    else if(v==="N") break;
+    else if(k<todayKey()) break;
+    k=offsetDate(k,-1);
+  }
+  return s;
+}
+
+/* storage injected */
+
+const T={bg:"#080808",surface:"#101010",surfaceHi:"#161616",border:"#1E1E1E",borderHi:"#2A2A2A",text:"#F2F2F2",textMid:"#888888",textLow:"#555555"};
+const Lbl=({children,style={}})=><span style={{fontSize:10,letterSpacing:3,textTransform:"uppercase",color:T.textLow,fontWeight:500,...style}}>{children}</span>;
+const Hr=({style={}})=><div style={{height:1,background:T.border,...style}}/>;
+
+const Icon=({n,s=18})=>{
+  const p={
+    today: <><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></>,
+    month: <><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><circle cx="8" cy="15" r="1" fill="currentColor"/><circle cx="12" cy="15" r="1" fill="currentColor"/><circle cx="16" cy="15" r="1" fill="currentColor"/></>,
+    stats: <><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></>,
+    up:    <polyline points="18 15 12 9 6 15"/>,
+    down:  <polyline points="6 9 12 15 18 9"/>,
+    trash: <><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6M9 6V4h6v2"/></>,
+    edit:  <><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></>,
+    chevL: <polyline points="15 18 9 12 15 6"/>,
+    chevR: <polyline points="9 18 15 12 9 6"/>,
+    x:     <><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>,
+    check: <polyline points="20 6 9 17 4 12"/>,
+    reset: <><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.95"/></>,
+    plus:  <><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"></line></>,
+  };
+  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">{p[n]}</svg>;
+};
+
+function IBtn({icon,onClick,size=34,is=16,active=false}){
+  return(
+    <button onClick={onClick} style={{width:size,height:size,background:active?T.text:T.surfaceHi,border:`1px solid ${active?T.text:T.border}`,borderRadius:8,color:active?T.bg:T.textMid,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>
+      <Icon n={icon} s={is}/>
+    </button>
+  );
+}
+
+// ── Sort helpers ───────────────────────────────────────────────
+// Today: rest → bool → number(weight last)
+function sortToday(habits){
+  return [...habits].sort((a,b)=>{
+    const rank=h=>h.type==="number"?(h.id==="weight"?4:3):h.restAllowed?0:1;
+    return rank(a)-rank(b);
+  });
+}
+// Stats weekly/monthly: weight → other numbers → rest bool → plain bool
+function sortStats(habits){
+  return [...habits].sort((a,b)=>{
+    const rank=h=>{
+      if(h.id==="weight") return 0;
+      if(h.type==="number") return 1;
+      if(h.type==="bool"&&h.restAllowed) return 2;
+      return 3;
+    };
+    return rank(a)-rank(b);
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
+//  MANAGE SHEET
+// ════════════════════════════════════════════════════════════════
+// Habit sub-types for UI
+const SUBTYPES=[
+  {key:"rest",   label:"Done / Miss / Rest",   restAllowed:true,  streakHabit:false},
+  {key:"bool",   label:"Done / Miss",           restAllowed:false, streakHabit:false},
+  {key:"streak", label:"Done / Miss / Streak",  restAllowed:false, streakHabit:true },
+  {key:"number", label:"Number",                restAllowed:false, streakHabit:false},
+];
+function subtypeOf(h){
+  if(h.type==="number") return "number";
+  if(h.restAllowed) return "rest";
+  if(h.streakHabit) return "streak";
+  return "bool";
+}
+
+// Shared form for add + edit
+function HabitForm({initial,onSave,onCancel,saveLabel}){
+  const [label,setLabel]=useState((initial && initial.label)||"");
+  const [type,setType]=useState((initial && initial.type)||"bool");
+  const [rest,setRest]=useState((initial && initial.restAllowed)||false);
+  const [streak,setStreak]=useState((initial && initial.streakHabit)||false);
+  const ref=useRef(); useEffect(()=>{setTimeout(()=>ref.current && ref.current.focus(),100);},[]);
+
+  // mutual exclusion
+  function toggleRest(v){setRest(v);if(v)setStreak(false);}
+  function toggleStreak(v){setStreak(v);if(v)setRest(false);}
+
+  function submit(){
+    const l=label.trim(); if(!l) return;
+    onSave({label:l,type,restAllowed:type==="bool"?rest:false,streakHabit:type==="bool"?streak:false});
+  }
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <input ref={ref} value={label} onChange={e=>setLabel(e.target.value)}
+        onKeyDown={e=>e.key==="Enter"&&submit()} placeholder="Habit name..."
+        style={{background:T.surfaceHi,border:`1px solid ${T.borderHi}`,borderRadius:8,padding:"11px 14px",color:T.text,fontSize:11,fontFamily:"inherit",outline:"none",letterSpacing:3,textTransform:"uppercase"}}/>
+      {/* Type toggle */}
+      <div style={{display:"flex",gap:6}}>
+        {[["bool","Done / Missed"],["number","Number"]].map(([v,l])=>(
+          <button key={v} onClick={()=>{setType(v);if(v==="number"){setRest(false);setStreak(false);}}} style={{flex:1,padding:"9px 0",borderRadius:8,cursor:"pointer",fontFamily:"inherit",background:type===v?T.text:T.surfaceHi,color:type===v?T.bg:T.textMid,border:`1px solid ${type===v?T.text:T.borderHi}`,fontSize:10,fontWeight:500,letterSpacing:2,textTransform:"uppercase",transition:"all 0.15s"}}>{l}</button>
+        ))}
+      </div>
+      {/* Rest toggle — only bool, disabled if streak on */}
+      {type==="bool"&&(
+        <button onClick={()=>toggleRest(!rest)} style={{padding:"10px 14px",background:rest?T.surfaceHi:T.surface,border:`1px solid ${rest?T.borderHi:T.border}`,borderRadius:8,cursor:streak?"not-allowed":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"space-between",opacity:streak?0.35:1}}>
+          <Lbl>Allow rest days</Lbl>
+          <div style={{width:32,height:18,borderRadius:9,background:rest?T.text:T.border,position:"relative",transition:"background 0.2s"}}>
+            <div style={{position:"absolute",top:3,left:rest?16:3,width:12,height:12,borderRadius:"50%",background:rest?T.bg:T.textLow,transition:"left 0.2s"}}/>
+          </div>
+        </button>
+      )}
+      {/* Streak toggle — only bool, disabled if rest on */}
+      {type==="bool"&&(
+        <button onClick={()=>toggleStreak(!streak)} style={{padding:"10px 14px",background:streak?T.surfaceHi:T.surface,border:`1px solid ${streak?T.borderHi:T.border}`,borderRadius:8,cursor:rest?"not-allowed":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"space-between",opacity:rest?0.35:1}}>
+          <Lbl>Track as streak</Lbl>
+          <div style={{width:32,height:18,borderRadius:9,background:streak?T.text:T.border,position:"relative",transition:"background 0.2s"}}>
+            <div style={{position:"absolute",top:3,left:streak?16:3,width:12,height:12,borderRadius:"50%",background:streak?T.bg:T.textLow,transition:"left 0.2s"}}/>
+          </div>
+        </button>
+      )}
+      <div style={{display:"flex",gap:8,marginTop:4}}>
+        {onCancel&&<button onClick={onCancel} style={{flex:1,padding:"11px",borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,color:T.textMid,cursor:"pointer",fontFamily:"inherit",fontSize:10,letterSpacing:2,textTransform:"uppercase"}}>Cancel</button>}
+        <button onClick={submit} style={{flex:2,padding:"11px",borderRadius:8,cursor:"pointer",fontFamily:"inherit",background:label.trim()?T.text:T.surfaceHi,color:label.trim()?T.bg:T.textLow,border:`1px solid ${label.trim()?T.text:T.border}`,fontSize:10,fontWeight:600,letterSpacing:3,textTransform:"uppercase",transition:"all 0.15s"}}>{saveLabel||"Save"}</button>
+      </div>
+    </div>
+  );
+}
+
+function AddNewSection({onAdd}){
+  const [open,setOpen]=useState(false);
+
+  function handleAdd(fields){
+    onAdd(fields);
+    setOpen(false);
+  }
+
+  if(!open) return(
+    <div style={{padding:"16px 24px"}}>
+      <button onClick={()=>setOpen(true)} style={{width:"100%",padding:"14px",borderRadius:8,background:"#161616",border:"1px solid #2A2A2A",color:"#F2F2F2",cursor:"pointer",fontFamily:"inherit",fontSize:10,fontWeight:600,letterSpacing:3,textTransform:"uppercase",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+        <Icon n="plus" s={13}/> Add New Habit
+      </button>
+    </div>
+  );
+
+  return(
+    <div style={{padding:"20px 24px",display:"flex",flexDirection:"column",gap:4}}>
+      <Lbl style={{color:T.textMid,marginBottom:8}}>Add New</Lbl>
+      <HabitForm onSave={handleAdd} onCancel={()=>setOpen(false)} saveLabel="Add Habit"/>
+    </div>
+  );
+}
+
+function ManageSheet({habits,setHabits,onClose,onClearAll}){
+  const [editId,setEditId]=useState(null);
+  const [confirm,setConfirm]=useState(false);
+
+  function add(fields){
+    const h={id:"h_"+Date.now(),...fields,createdAt:todayKey()};
+    const next=[...habits,h]; setHabits(next); saveHabits(next);
+  }
+
+  function save(id,fields){
+    const next=habits.map(h=>h.id===id?{...h,...fields}:h);
+    setHabits(next); saveHabits(next); setEditId(null);
+  }
+
+  function remove(id){const next=habits.filter(h=>h.id!==id);setHabits(next);saveHabits(next);}
+
+  const editHabit=habits.find(h=>h.id===editId);
+
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:200,display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
+      <div onClick={onClose} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.75)"}}/>
+      <div style={{position:"relative",background:T.surface,borderRadius:"20px 20px 0 0",border:`1px solid ${T.border}`,borderBottom:"none",maxHeight:"90vh",overflowY:"auto",paddingBottom:48}}>
+        <div style={{display:"flex",justifyContent:"center",padding:"14px 0 0"}}><div style={{width:36,height:4,borderRadius:2,background:T.borderHi}}/></div>
+        <div style={{padding:"16px 24px 0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <Lbl style={{color:T.textMid}}>{editId?"Edit Habit":"Manage Habits"}</Lbl>
+          <button onClick={()=>{setEditId(null);onClose();}} style={{background:"none",border:"none",color:T.textLow,cursor:"pointer"}}><Icon n="x" s={18}/></button>
+        </div>
+
+        {/* Edit form — shown inline when editing */}
+        {editId&&editHabit&&(
+          <div style={{padding:"20px 24px"}}>
+            <HabitForm
+              initial={editHabit}
+              onSave={fields=>save(editId,fields)}
+              onCancel={()=>setEditId(null)}
+              saveLabel="Save Changes"
+            />
+          </div>
+        )}
+
+        {/* Habit list — hidden while editing */}
+        {!editId&&(
+          <>
+            <div style={{marginTop:20}}>
+              {habits.map((h,i,arr)=>(
+                <div key={h.id} style={{padding:"14px 24px",borderBottom:i<arr.length-1?`1px solid ${T.border}`:"none"}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                        <span style={{fontSize:11,letterSpacing:3,textTransform:"uppercase",color:T.text,fontWeight:500}}>{h.label}</span>
+                        <Lbl style={{color:T.textLow}}>{h.createdAt||todayKey()}</Lbl>
+                      </div>
+                      <Lbl style={{marginTop:5,display:"block"}}>{h.type==="number"?"Number":h.restAllowed?"Done / Miss / Rest":h.streakHabit?"Done / Miss / Streak":"Done / Miss"}</Lbl>
+                    </div>
+                    <div style={{display:"flex",gap:6,flexShrink:0}}>
+                      <IBtn icon="edit" onClick={()=>setEditId(h.id)} size={34} is={14}/>
+                      <IBtn icon="trash" onClick={()=>remove(h.id)} size={34} is={14}/>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <Hr style={{margin:"8px 0"}}/>
+
+            {/* Add new */}
+            <AddNewSection onAdd={add}/>
+
+            <Hr/>
+
+            {/* Danger */}
+            <div style={{padding:"20px 24px"}}>
+              <Lbl style={{color:T.textLow}}>Danger</Lbl>
+              {!confirm?(
+                <button onClick={()=>setConfirm(true)} style={{marginTop:14,width:"100%",padding:"14px",borderRadius:8,background:"#161616",border:"1px solid #2A2A2A",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8,color:"#888"}}>
+                  <Icon n="reset" s={14}/><span style={{fontSize:10,letterSpacing:3,textTransform:"uppercase",fontWeight:600,color:"#888"}}>Clear All Tracked Data</span>
+                </button>
+              ):(
+                <div style={{marginTop:14,background:T.surfaceHi,border:`1px solid ${T.borderHi}`,borderRadius:12,padding:"16px"}}>
+                  <Lbl style={{color:T.textMid,display:"block",marginBottom:12}}>Erases all tracked data. Cannot be undone.</Lbl>
+                  <div style={{display:"flex",gap:8}}>
+                    <button onClick={()=>setConfirm(false)} style={{flex:1,padding:"10px",borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,color:T.textMid,cursor:"pointer",fontFamily:"inherit",fontSize:10,letterSpacing:2,textTransform:"uppercase"}}>Cancel</button>
+                    <button onClick={()=>{onClearAll();setConfirm(false);onClose();}} style={{flex:1,padding:"10px",borderRadius:8,background:T.text,border:`1px solid ${T.text}`,color:T.bg,cursor:"pointer",fontFamily:"inherit",fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase"}}>Clear All</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+//  TODAY
+// ════════════════════════════════════════════════════════════════
+function TodayScreen({data,setData,habits,setHabits,onClearAll,user,onMenuOpen}){
+  const [dateKey,setDateKey]=useState(todayKey());
+  const [managing,setManaging]=useState(false);
+  const [clearing,setClearing]=useState(false);
+  const isToday=dateKey===todayKey();
+  const dt=new Date(dateKey+"T12:00:00");
+  const visible=sortToday(habits.filter(h=>!h.createdAt||h.createdAt<=dateKey));
+  const day=data[dateKey]||{};
+
+  function set(id,val){setData(prev=>({...prev,[dateKey]:{...prev[dateKey],[id]:val}}));}
+  function clearDay(){setData(prev=>{const n={...prev};delete n[dateKey];return n;});setClearing(false);}
+
+  const logged=visible.filter(h=>{const v=day[h.id];return h.type==="number"?(v!==undefined&&v!==""):v!==undefined;}).length;
+
+  return(
+    <div style={{paddingBottom:100}}>
+      <div style={{padding:"52px 24px 20px"}}>
+        {/* Day name on top, date below */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+          <IBtn icon="chevL" onClick={()=>setDateKey(offsetDate(dateKey,-1))}/>
+          <div style={{textAlign:"center"}}>
+            <Lbl style={{display:"block",color:T.textMid}}>{DAYS[dt.getDay()]}</Lbl>
+            <div style={{fontSize:26,fontWeight:300,letterSpacing:-0.5,color:T.text,marginTop:4}}>
+              {isToday?"Today":`${dt.getDate()} ${MONTHS[dt.getMonth()]}`}
+            </div>
+          </div>
+          <IBtn icon="chevR" onClick={()=>setDateKey(offsetDate(dateKey,1))}/>
+        </div>
+
+        {/* Progress + icon-only actions */}
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{height:1,background:T.border,flex:1,position:"relative",overflow:"hidden"}}>
+            <div style={{position:"absolute",top:0,left:0,height:"100%",background:T.text,width:`${visible.length?(logged/visible.length)*100:0}%`,transition:"width 0.4s ease"}}/>
+          </div>
+          <Lbl>{logged} / {visible.length}</Lbl>
+          <IBtn icon="trash" onClick={()=>setClearing(true)} size={32} is={14}/>
+          <IBtn icon="edit" onClick={()=>setManaging(true)} size={32} is={14}/>
+          <button onClick={onMenuOpen} style={{width:32,height:32,background:"#161616",border:"1px solid #1E1E1E",borderRadius:8,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:5,flexShrink:0,padding:"6px"}}>
+            <div style={{width:14,height:1.5,background:"#888",borderRadius:1}}/>
+            <div style={{width:14,height:1.5,background:"#888",borderRadius:1}}/>
+            <div style={{width:14,height:1.5,background:"#888",borderRadius:1}}/>
+          </button>
+        </div>
+      </div>
+
+      <Hr/>
+
+      <div style={{display:"flex",flexDirection:"column"}}>
+        {visible.map((h,i)=><HabitRow key={h.id} habit={h} value={day[h.id]} onChange={v=>set(h.id,v)} isLast={i===visible.length-1}/>)}
+      </div>
+
+      {managing&&<ManageSheet habits={habits} setHabits={setHabits} onClose={()=>setManaging(false)} onClearAll={onClearAll}/>}
+      {clearing&&(
+        <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+          <div onClick={()=>setClearing(false)} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.75)"}}/>
+          <div style={{position:"relative",background:T.surface,borderRadius:"20px 20px 0 0",border:`1px solid ${T.border}`,borderBottom:"none",padding:"24px 24px 48px",width:"100%",maxWidth:430}}>
+            <Lbl style={{color:T.textMid}}>Clear this day</Lbl>
+            <div style={{fontSize:18,fontWeight:300,color:T.text,marginTop:8,marginBottom:16}}>{dt.getDate()} {MONTHS[dt.getMonth()]} {dt.getFullYear()}</div>
+            <Lbl style={{display:"block",marginBottom:16}}>All entries for this date will be removed.</Lbl>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>setClearing(false)} style={{flex:1,padding:"12px",borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,color:T.textMid,cursor:"pointer",fontFamily:"inherit",fontSize:10,letterSpacing:2,textTransform:"uppercase"}}>Cancel</button>
+              <button onClick={clearDay} style={{flex:1,padding:"12px",borderRadius:8,background:T.text,border:`1px solid ${T.text}`,color:T.bg,cursor:"pointer",fontFamily:"inherit",fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase"}}>Clear Day</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HabitRow({habit,value,onChange,isLast}){
+  const [wi,setWi]=useState(value||"");
+  useEffect(()=>setWi(value||""),[value]);
+  const has=value!==undefined&&value!=="";
+  const isN=habit.type==="number";
+  const dv=isN?(has?`${value}`:"—"):(value==="Y"?"Done":value==="N"?"Missed":value==="R"?"Rest":"—");
+  return(
+    <div style={{padding:"20px 24px",borderBottom:isLast?"none":`1px solid ${T.border}`}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <span style={{fontSize:11,fontWeight:500,color:T.text,letterSpacing:3,textTransform:"uppercase"}}>{habit.label}</span>
+        <Lbl style={{color:has?T.textMid:T.textLow}}>{dv}</Lbl>
+      </div>
+      {!isN&&(
+        <div style={{display:"flex",gap:6}}>
+          {[{v:"Y",l:"Done"},{v:"N",l:"Missed"},...(habit.restAllowed?[{v:"R",l:"Rest"}]:[])].map(btn=>{
+            const active=value===btn.v;
+            return <button key={btn.v} onClick={()=>onChange(active?undefined:btn.v)} style={{flex:1,padding:"10px 0",borderRadius:8,cursor:"pointer",fontFamily:"inherit",background:active?T.text:T.surfaceHi,color:active?T.bg:T.textMid,border:`1px solid ${active?T.text:T.borderHi}`,fontSize:10,fontWeight:500,letterSpacing:2,textTransform:"uppercase",transition:"all 0.15s"}}>{btn.l}</button>;
+          })}
+        </div>
+      )}
+      {isN&&(
+        <div style={{display:"flex",gap:8}}>
+          <input type="number" step="0.1" min="0" max="9999" placeholder="0.0" value={wi} onChange={e=>setWi(e.target.value)} onBlur={()=>{if(wi!=="")onChange(parseFloat(wi));}}
+            style={{flex:1,background:T.surfaceHi,border:`1px solid ${T.borderHi}`,borderRadius:8,padding:"10px 14px",color:T.text,fontSize:16,fontFamily:"inherit",outline:"none"}}/>
+          <button onClick={()=>{if(wi!=="")onChange(parseFloat(wi));}} style={{background:wi!==""?T.text:T.surfaceHi,color:wi!==""?T.bg:T.textLow,border:`1px solid ${wi!==""?T.text:T.borderHi}`,borderRadius:8,padding:"10px 20px",fontSize:10,fontWeight:500,letterSpacing:2,textTransform:"uppercase",cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s"}}>Log</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+//  MONTH
+// ════════════════════════════════════════════════════════════════
+function MonthScreen({data,habits}){
+  const now=new Date();
+  const [yr,setYr]=useState(now.getFullYear());[yr,setYr];
+  const [mo,setMo]=useState(now.getMonth());
+  const [sel,setSel]=useState(null);
+  const dim=getDaysInMonth(yr,mo); const fDay=new Date(yr,mo,1).getDay(); const ts=todayKey();
+  const bh=habits.filter(h=>h.type==="bool");
+
+  function getStatus(d){
+    const k=`${yr}-${String(mo+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+    const e=data[k]; if(!e) return null;
+    const vis=bh.filter(h=>!h.createdAt||h.createdAt<=k);
+    return{done:vis.filter(h=>e[h.id]==="Y").length,missed:vis.filter(h=>e[h.id]==="N").length,key:k,raw:e};
+  }
+  const prev=()=>mo===0?(setYr(y=>y-1),setMo(11)):setMo(m=>m-1);
+  const next=()=>mo===11?(setYr(y=>y+1),setMo(0)):setMo(m=>m+1);
+
+  return(
+    <div style={{paddingBottom:100}}>
+      <div style={{padding:"52px 24px 24px",display:"flex",alignItems:"flex-end",justifyContent:"space-between"}}>
+        <div><Lbl>{String(yr)}</Lbl><div style={{fontSize:32,fontWeight:300,letterSpacing:-1,marginTop:4,color:T.text}}>{MONTHS[mo]}</div></div>
+        <div style={{display:"flex",gap:4}}><IBtn icon="chevL" onClick={prev}/><IBtn icon="chevR" onClick={next}/></div>
+      </div>
+      <Hr/>
+      <div style={{padding:"20px 16px"}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",marginBottom:8}}>
+          {["S","M","T","W","T","F","S"].map((d,i)=><div key={i} style={{textAlign:"center",fontSize:9,color:T.textLow,letterSpacing:2,padding:"4px 0",fontWeight:500}}>{d}</div>)}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
+          {Array(fDay).fill(null).map((_,i)=><div key={`e${i}`}/>)}
+          {Array(dim).fill(null).map((_,i)=>{
+            const d=i+1;
+            const k=`${yr}-${String(mo+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+            const st=getStatus(d); const iT=k===ts; const iS=k===sel;
+            const dot=st&&(st.done>0||st.missed>0)?(st.missed>0?T.textLow:T.textMid):null;
+            return(
+              <div key={d} onClick={()=>setSel(iS?null:k)} style={{aspectRatio:"1",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,borderRadius:8,cursor:"pointer",background:iS?T.surfaceHi:iT?T.surface:"transparent",border:iT?`1px solid ${T.borderHi}`:"1px solid transparent"}}>
+                <span style={{fontSize:13,color:iT?T.text:T.textMid,fontWeight:iT?500:300}}>{d}</span>
+                {dot&&<div style={{width:4,height:4,borderRadius:"50%",background:dot}}/>}
+              </div>
+            );
+          })}
+        </div>
+        {sel&&(()=>{
+          const sd=data[sel];
+          const visH=sortToday(habits.filter(h=>!h.createdAt||h.createdAt<=sel));
+          return(
+            <div style={{marginTop:24}}>
+              <Hr/>
+              <div style={{paddingTop:20}}>
+                <Lbl>{new Date(sel+"T12:00:00").toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})}</Lbl>
+                <div style={{marginTop:16}}>
+                  {sd?visH.map((h,i)=>{
+                    const v=sd[h.id];
+                    const dv=h.type==="number"?(v?`${v}`:"—"):(v==="Y"?"Done":v==="N"?"Missed":v==="R"?"Rest":"—");
+                    return <div key={h.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"13px 0",borderBottom:i<visH.length-1?`1px solid ${T.border}`:"none"}}><span style={{fontSize:11,letterSpacing:3,textTransform:"uppercase",color:T.textMid,fontWeight:500}}>{h.label}</span><Lbl style={{color:v?T.text:T.textLow}}>{dv}</Lbl></div>;
+                  }):<Lbl>No data logged</Lbl>}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+//  STATS
+// ════════════════════════════════════════════════════════════════
+function StatNum({value,sub}){
+  return(
+    <div style={{textAlign:"center"}}>
+      <div style={{fontSize:24,fontWeight:300,color:T.text,letterSpacing:-0.5,lineHeight:1.1}}>{value}</div>
+      <Lbl style={{marginTop:5,display:"block"}}>{sub}</Lbl>
+    </div>
+  );
+}
+
+function NavRow({label,onPrev,onNext,info}){
+  return(
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+      <Lbl style={{color:T.textMid,fontWeight:700,letterSpacing:4}}>{label}</Lbl>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <IBtn icon="chevL" onClick={onPrev} size={28} is={13}/>
+        <Lbl style={{color:T.textMid,minWidth:110,textAlign:"center"}}>{info}</Lbl>
+        <IBtn icon="chevR" onClick={onNext} size={28} is={13}/>
+      </div>
+    </div>
+  );
+}
+
+function PeriodHabits({habits,data,keys}){
+  // sorted: weight → rest → bool → other numbers
+  const sorted=sortStats(habits);
+
+  function countB(id){return{done:keys.filter(k=>data[k]?.[id]==="Y").length,missed:keys.filter(k=>data[k]?.[id]==="N").length,rest:keys.filter(k=>data[k]?.[id]==="R").length};}
+  function numVals(id){return keys.map(k=>data[k]?.[id]).filter(v=>v!==undefined&&v!=="");}
+
+  return(
+    <div style={{marginTop:20}}>
+      {sorted.map((h,i)=>{
+        const isLast=i===sorted.length-1;
+        const border=isLast?"none":`1px solid ${T.border}`;
+
+        if(h.id==="weight"){
+          const vals=numVals(h.id);
+          const first=vals[0],last=vals[vals.length-1];
+          const avg=vals.length?(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1):null;
+          const change=(first!==undefined&&last!==undefined)?+(last-first).toFixed(1):null;
+          return(
+            <div key={h.id} style={{padding:"14px 0",borderBottom:border}}>
+              <span style={{fontSize:11,fontWeight:500,color:T.text,letterSpacing:3,textTransform:"uppercase"}}>{h.label}</span>
+              <div style={{marginTop:12,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:4}}>
+                <StatNum value={first?first.toFixed(1):"—"} sub="Start"/>
+                <StatNum value={last?last.toFixed(1):"—"} sub="End"/>
+                <StatNum value={change!==null?`${change>0?"+":""}${change}`:"—"} sub="Change"/>
+              </div>
+            </div>
+          );
+        }
+
+        if(h.type==="bool"){
+          const {done,missed,rest}=countB(h.id);
+          return(
+            <div key={h.id} style={{padding:"14px 0",borderBottom:border}}>
+              <span style={{fontSize:11,fontWeight:500,color:T.text,letterSpacing:3,textTransform:"uppercase"}}>{h.label}</span>
+              <div style={{marginTop:12,display:"grid",gridTemplateColumns:h.restAllowed?"1fr 1fr 1fr":"1fr 1fr",gap:4}}>
+                <StatNum value={done} sub="Done"/>
+                <StatNum value={missed} sub="Missed"/>
+                {h.restAllowed&&<StatNum value={rest} sub="Rest"/>}
+              </div>
+            </div>
+          );
+        }
+
+        // other number (sleep etc)
+        const vals=numVals(h.id);
+        const avg=vals.length?(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1):null;
+        const min=vals.length?Math.min(...vals).toFixed(1):null;
+        const max=vals.length?Math.max(...vals).toFixed(1):null;
+        return(
+          <div key={h.id} style={{padding:"14px 0",borderBottom:border}}>
+            <span style={{fontSize:11,fontWeight:500,color:T.text,letterSpacing:3,textTransform:"uppercase"}}>{h.label}</span>
+            <div style={{marginTop:12,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:4}}>
+              <StatNum value={avg||"—"} sub="Avg"/>
+              <StatNum value={min||"—"} sub="Min"/>
+              <StatNum value={max||"—"} sub="Max"/>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function StatsScreen({data,habits}){
+  const now=new Date();
+  const [wY,setWY]=useState(now.getFullYear()); const [wM,setWM]=useState(now.getMonth());
+  const [wI,setWI]=useState(Math.floor((now.getDate()-1)/7));
+  const [mY,setMY]=useState(now.getFullYear()); const [mM,setMM]=useState(now.getMonth());
+
+  const streakH=habits.filter(h=>h.type==="bool"&&h.streakHabit);
+  // non-streak habits for weekly/monthly
+  const nonStreakH=habits.filter(h=>!h.streakHabit);
+
+  const wDim=getDaysInMonth(wY,wM); const maxWI=Math.floor((wDim-1)/7);
+  const wStart=wI*7+1; const wEnd=Math.min(wStart+6,wDim);
+
+  function prevWeek(){if(wI>0){setWI(i=>i-1);}else{const nm=wM===0?11:wM-1,ny=wM===0?wY-1:wY;setWM(nm);setWY(ny);setWI(Math.floor((getDaysInMonth(ny,nm)-1)/7));}}
+  function nextWeek(){if(wI<maxWI){setWI(i=>i+1);}else{const nm=wM===11?0:wM+1,ny=wM===11?wY+1:wY;setWM(nm);setWY(ny);setWI(0);}}
+  const prevMo=()=>mM===0?(setMY(y=>y-1),setMM(11)):setMM(m=>m-1);
+  const nextMo=()=>mM===11?(setMY(y=>y+1),setMM(0)):setMM(m=>m+1);
+
+  function keys(y,m,s,e){return Array.from({length:e-s+1},(_,i)=>`${y}-${String(m+1).padStart(2,"0")}-${String(s+i).padStart(2,"0")}`);}
+  function moKeys(y,m){return keys(y,m,1,getDaysInMonth(y,m));}
+
+  const wKeys=keys(wY,wM,wStart,wEnd);
+  const mKeys=moKeys(mY,mM);
+
+  return(
+    <div style={{paddingBottom:100}}>
+      <div style={{padding:"52px 24px 24px"}}>
+        <div style={{fontSize:32,fontWeight:300,letterSpacing:-1,color:T.text}}>Report</div>
+      </div>
+      <Hr/>
+      <div style={{padding:"28px 24px",display:"flex",flexDirection:"column",gap:40}}>
+
+        {/* STREAKS */}
+        {streakH.length>0&&(
+          <section>
+            <Lbl style={{color:T.textMid,fontWeight:700,letterSpacing:4}}>Streaks</Lbl>
+            <div style={{marginTop:20}}>
+              {streakH.map((h,i)=>{
+                const streak=calcStreak(h.id,data);
+                const allK=Object.keys(data);
+                const done=allK.filter(k=>data[k]?.[h.id]==="Y").length;
+                const missed=allK.filter(k=>data[k]?.[h.id]==="N").length;
+                return(
+                  <div key={h.id} style={{paddingBottom:i<streakH.length-1?22:0,borderBottom:i<streakH.length-1?`1px solid ${T.border}`:"none",marginBottom:i<streakH.length-1?22:0}}>
+                    <span style={{fontSize:11,fontWeight:500,color:T.text,letterSpacing:3,textTransform:"uppercase"}}>{h.label}</span>
+                    <div style={{marginTop:14,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:4}}>
+                      <StatNum value={streak} sub="Streak"/>
+                      <StatNum value={done} sub="Done"/>
+                      <StatNum value={missed} sub="Missed"/>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* WEEKLY */}
+        <section>
+          <NavRow label="Weekly" onPrev={prevWeek} onNext={nextWeek} info={`${MONTHS[wM].slice(0,3)}  ${wStart}–${wEnd}`}/>
+          <PeriodHabits habits={nonStreakH} data={data} keys={wKeys}/>
+        </section>
+
+        {/* MONTHLY */}
+        <section>
+          <NavRow label="Monthly" onPrev={prevMo} onNext={nextMo} info={`${MONTHS[mM].slice(0,3)}  ${mY}`}/>
+          <PeriodHabits habits={nonStreakH} data={data} keys={mKeys}/>
+        </section>
+
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+//  NAV + ROOT
+// ════════════════════════════════════════════════════════════════
+function Nav({tab,setTab}){
+  return(
+    <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,background:T.bg,borderTop:`1px solid ${T.border}`,display:"flex",justifyContent:"space-around",padding:"12px 0 28px",zIndex:100}}>
+      {[{id:"today",l:"Today",i:"today"},{id:"month",l:"Month",i:"month"},{id:"stats",l:"Report",i:"stats"}].map(t=>(
+        <button key={t.id} onClick={()=>setTab(t.id)} style={{background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:6,padding:"4px 24px",color:tab===t.id?T.text:T.textLow,fontFamily:"inherit",transition:"color 0.15s ease"}}>
+          <Icon n={t.i} s={20}/><span style={{fontSize:9,letterSpacing:2,textTransform:"uppercase",fontWeight:tab===t.id?600:400}}>{t.l}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function App(){
+  const [tab,setTab]=useState("today");
+  const [data,setData]=useState({});
+  const [habits,setHabits]=useState(DEFAULT_HABITS);
+
+  useEffect(()=>{
+    loadData().then(d=>{if(d&&Object.keys(d).length)setData(d);});
+    loadHabits().then(h=>{if(h&&h.length)setHabits(h);});
+  },[]);
+
+  const handleSet=useCallback(updater=>{
+    setData(prev=>{const next=typeof updater==="function"?updater(prev):updater;saveData(next);return next;});
+  },[]);
+
+  function clearAll(){setData({});saveData({});}
+
+  return(
+    <div style={{fontFamily:"'Aptos','Aptos Display','Calibri','Segoe UI',system-ui,sans-serif",background:T.bg,color:T.text,minHeight:"100vh",maxWidth:430,margin:"0 auto",overflowX:"hidden"}}>
+      {tab==="today"&&<TodayScreen data={data} setData={handleSet} habits={habits} setHabits={setHabits} onClearAll={clearAll}/>}
+      {tab==="month"&&<MonthScreen data={data} habits={habits}/>}
+      {tab==="stats"&&<StatsScreen data={data} habits={habits}/>}
+      <Nav tab={tab} setTab={setTab}/>
+    </div>
+  );
+}
+
+
+    // ── Onboarding Screen ─────────────────────────────────────────
+    const GOALS = [
+      "Build discipline",
+      "Get fit",
+      "Clean lifestyle",
+      "All of the above",
+    ];
+
+    function OnboardingScreen({ user, onComplete }) {
+      const [step,   setStep]   = useState(0); // 0=name, 1=goal
+      const [name,   setName]   = useState((user && user.displayName) || "");
+      const [goal,   setGoal]   = useState("");
+      const [saving, setSaving] = useState(false);
+
+      async function handleSave() {
+        setSaving(true);
+        const profile = { name: name.trim(), goal: goal, email: user.email, createdAt: new Date().toISOString() };
+        await saveProfile(profile);
+        onComplete(profile);
+      }
+
+      // Step 0 — Name
+      if (step === 0) return (
+        <div style={{position:"fixed",inset:0,background:"#080808",maxWidth:430,margin:"0 auto",
+          fontFamily:"'Aptos','Calibri','Segoe UI',system-ui,sans-serif",
+          display:"flex",flexDirection:"column",boxSizing:"border-box",overflow:"hidden"}}>
+
+          {/* Top accent line */}
+          <div style={{height:1,background:"linear-gradient(90deg,transparent,#2A2A2A,transparent)"}}/>
+
+          {/* Main content */}
+          <div style={{flex:1,display:"flex",flexDirection:"column",justifyContent:"center",padding:"0 32px"}}>
+            {/* Step indicator dots */}
+            <div style={{display:"flex",gap:6,marginBottom:48}}>
+              <div style={{width:20,height:2,borderRadius:1,background:"#F2F2F2"}}/>
+              <div style={{width:6,height:2,borderRadius:1,background:"#2A2A2A"}}/>
+            </div>
+
+            <div style={{fontSize:11,letterSpacing:4,textTransform:"uppercase",color:"#666666",marginBottom:20}}>
+              Nice to meet you
+            </div>
+            <div style={{fontSize:38,fontWeight:300,color:"#F2F2F2",letterSpacing:-1,lineHeight:1.15,marginBottom:48}}>
+              What should<br/>we call you?
+            </div>
+
+            {/* Large underline input */}
+            <div style={{position:"relative"}}>
+              <input
+                value={name}
+                onChange={e=>setName(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&name.trim()&&setStep(1)}
+                placeholder="Your name"
+                autoFocus
+                style={{width:"100%",background:"transparent",border:"none",
+                  padding:"0 0 16px 0",color:"#F2F2F2",fontSize:26,fontFamily:"inherit",
+                  outline:"none",letterSpacing:-0.5,fontWeight:300}}
+              />
+              <div style={{height:1,background:name.trim()?"#F2F2F2":"#333333",transition:"background 0.3s"}}/>
+            </div>
+          </div>
+
+          {/* Bottom */}
+          <div style={{padding:"24px 32px 40px"}}>
+            <button onClick={()=>setStep(1)} disabled={!name.trim()} style={{
+              width:"100%",padding:"16px",borderRadius:14,
+              background:name.trim()?"#F2F2F2":"transparent",
+              color:name.trim()?"#080808":"#2A2A2A",
+              border:`1px solid ${name.trim()?"#F2F2F2":"#1E1E1E"}`,
+              cursor:name.trim()?"pointer":"default",
+              fontFamily:"inherit",fontSize:11,fontWeight:600,
+              letterSpacing:4,textTransform:"uppercase",transition:"all 0.25s"
+            }}>Continue</button>
+          </div>
+        </div>
+      );
+
+      // Step 1 — Goal
+      return (
+        <div style={{position:"fixed",inset:0,background:"#080808",maxWidth:430,margin:"0 auto",
+          fontFamily:"'Aptos','Calibri','Segoe UI',system-ui,sans-serif",
+          display:"flex",flexDirection:"column",boxSizing:"border-box",overflow:"hidden"}}>
+
+          <div style={{height:1,background:"linear-gradient(90deg,transparent,#2A2A2A,transparent)"}}/>
+
+          <div style={{flex:1,display:"flex",flexDirection:"column",justifyContent:"center",padding:"0 32px"}}>
+            {/* Minimal back + step dots */}
+            <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:48}}>
+              <button onClick={()=>setStep(0)} style={{background:"none",border:"none",cursor:"pointer",padding:0,color:"#3A3A3A",display:"flex",alignItems:"center",lineHeight:1}}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="15 18 9 12 15 6"/>
+                </svg>
+              </button>
+              <div style={{display:"flex",gap:6}}>
+                <div style={{width:6,height:2,borderRadius:1,background:"#2A2A2A"}}/>
+                <div style={{width:20,height:2,borderRadius:1,background:"#F2F2F2"}}/>
+              </div>
+            </div>
+
+            <div style={{fontSize:11,letterSpacing:4,textTransform:"uppercase",color:"#666666",marginBottom:20}}>
+              Almost there
+            </div>
+
+            {/* Name appears bold here */}
+            <div style={{fontSize:38,fontWeight:300,color:"#F2F2F2",letterSpacing:-1,lineHeight:1.15,marginBottom:36}}>
+              Hey <span style={{fontWeight:500}}>{name.trim()}</span>,<br/>
+              your goal?
+            </div>
+
+            {/* Goal options — horizontal pill style */}
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {GOALS.map((g,i) => (
+                <button key={g} onClick={()=>setGoal(g)} style={{
+                  padding:"14px 20px",
+                  borderRadius:10,
+                  textAlign:"left",
+                  background:goal===g?"#F2F2F2":"transparent",
+                  color:goal===g?"#080808":"#AAAAAA",
+                  border:`1px solid ${goal===g?"#F2F2F2":"#333333"}`,
+                  cursor:"pointer",fontFamily:"inherit",
+                  fontSize:11,fontWeight:goal===g?600:400,
+                  letterSpacing:goal===g?2:1.5,textTransform:"uppercase",
+                  transition:"all 0.2s",
+                  display:"flex",alignItems:"center",justifyContent:"space-between",
+                }}>
+                  {g}
+                  {goal===g && (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Bottom — full width Get Started */}
+          <div style={{padding:"24px 32px 40px"}}>
+            <button onClick={handleSave} disabled={!goal||saving} style={{
+              width:"100%",padding:"16px",borderRadius:14,
+              background:goal?"#F2F2F2":"transparent",
+              color:goal?"#080808":"#888888",
+              border:`1px solid ${goal?"#F2F2F2":"#444444"}`,
+              cursor:goal?"pointer":"default",
+              fontFamily:"inherit",fontSize:11,fontWeight:600,
+              letterSpacing:4,textTransform:"uppercase",transition:"all 0.25s"
+            }}>{saving?"Saving...":"Get Started"}</button>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Login Screen ─────────────────────────────────────────────
+    function LoginScreen() {
+      const [loading, setLoading] = useState(false);
+      const [error, setError]     = useState("");
+      const lastEmail = localStorage.getItem("last_email") || "";
+      const lastName  = localStorage.getItem("last_name")  || "";
+
+      async function handleLogin() {
+        setLoading(true); setError("");
+        try {
+          if (lastEmail) window._provider.setCustomParameters({ login_hint: lastEmail });
+          await window._auth.signInWithPopup(window._provider);
+        } catch(e) {
+          setError("Sign in failed. Please try again.");
+          setLoading(false);
+        }
+      }
+
+      async function handleDifferent() {
+        setLoading(true); setError("");
+        try {
+          window._provider.setCustomParameters({ prompt: "select_account" });
+          await window._auth.signInWithPopup(window._provider);
+        } catch(e) {
+          setError("Sign in failed. Please try again.");
+          setLoading(false);
+        }
+      }
+
+      return (
+        <div style={{background:"#080808",minHeight:"100vh",maxWidth:430,margin:"0 auto",
+          display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+          padding:"40px 28px",fontFamily:"'Aptos','Calibri','Segoe UI',system-ui,sans-serif"}}>
+
+          <div style={{textAlign:"center",marginBottom:56}}>
+            <div style={{fontSize:11,letterSpacing:4,textTransform:"uppercase",color:"#888",fontWeight:700,marginBottom:14}}>
+              My Habit Tracker
+            </div>
+            <div style={{fontSize:36,fontWeight:300,color:"#F2F2F2",letterSpacing:-1,lineHeight:1.2}}>
+              Track what<br/>matters.
+            </div>
+          </div>
+
+          {lastEmail ? (
+            <div style={{width:"100%",display:"flex",flexDirection:"column",gap:10}}>
+              {/* Returning user — show their account */}
+              <button onClick={handleLogin} disabled={loading} style={{
+                width:"100%",padding:"14px 16px",borderRadius:12,
+                background:loading?"#101010":"#F2F2F2",
+                color:loading?"#3A3A3A":"#080808",
+                border:"none",cursor:loading?"not-allowed":"pointer",
+                fontFamily:"inherit",transition:"all 0.2s",
+                display:"flex",alignItems:"center",gap:12,
+              }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" style={{flexShrink:0}}>
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+                <div style={{flex:1,textAlign:"left"}}>
+                  {loading ? (
+                    <span style={{fontSize:11,fontWeight:600,letterSpacing:3,textTransform:"uppercase",color:"#3A3A3A"}}>Signing in...</span>
+                  ) : (
+                    <>
+                      <div style={{fontSize:10,letterSpacing:3,textTransform:"uppercase",color:"#3A3A3A",marginBottom:3}}>Continue as</div>
+                      <div style={{fontSize:11,fontWeight:600,letterSpacing:2,textTransform:"uppercase",color:"#080808"}}>{lastEmail}</div>
+                    </>
+                  )}
+                </div>
+              </button>
+
+              <button onClick={handleDifferent} disabled={loading} style={{
+                width:"100%",padding:"12px 16px",borderRadius:12,
+                background:"transparent",color:"#888",
+                border:"1px solid #1E1E1E",cursor:loading?"not-allowed":"pointer",
+                fontFamily:"inherit",fontSize:11,letterSpacing:2,textTransform:"uppercase",
+              }}>
+                Use different account
+              </button>
+            </div>
+          ) : (
+            <button onClick={handleLogin} disabled={loading} style={{
+              width:"100%",padding:"14px",borderRadius:12,
+              background:loading?"#101010":"#F2F2F2",
+              color:loading?"#3A3A3A":"#080808",
+              border:"none",cursor:loading?"not-allowed":"pointer",
+              fontFamily:"inherit",fontSize:11,fontWeight:600,
+              letterSpacing:3,textTransform:"uppercase",transition:"all 0.2s",
+              display:"flex",alignItems:"center",justifyContent:"center",gap:10,
+            }}>
+              <svg width="18" height="18" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+              </svg>
+              {loading ? "Signing in..." : "Continue with Google"}
+            </button>
+          )}
+
+          {error && <div style={{marginTop:16,fontSize:11,color:"#888",letterSpacing:1,textAlign:"center"}}>{error}</div>}
+        </div>
+      );
+    }
+
+    // ── User Menu ─────────────────────────────────────────────────
+    function UserMenu({ user, profile, onClose, onSignOut, onDeleteAccount }) {
+      const [confirmDelete, setConfirmDelete] = useState(false);
+      const [deleting, setDeleting] = useState(false);
+
+      async function handleDelete() {
+        setDeleting(true);
+        try {
+          localStorage.removeItem("last_email");
+          localStorage.removeItem("last_name");
+          // Delete all data first
+          if (_uid) {
+            var db = window._db;
+            var uid = _uid;
+            var docs = ["habitData","habitList","profile"];
+            for (var i = 0; i < docs.length; i++) {
+              try { await db.collection("users").doc(uid).collection("data").doc(docs[i]).delete(); } catch(e2) {}
+            }
+            try { await db.collection("users").doc(uid).delete(); } catch(e2) {}
+          }
+          // Delete auth user if possible, otherwise just sign out
+          try {
+            if (window._auth.currentUser) {
+              await window._auth.currentUser.delete();
+            }
+          } catch(e2) {
+            // If delete fails (needs re-auth), just sign out
+            await window._auth.signOut();
+          }
+          // Force sign out regardless
+          try { await window._auth.signOut(); } catch(e2) {}
+          // Force React state update via callback
+          if (onDeleteAccount) onDeleteAccount();
+        } catch(e) {
+          console.error(e);
+          setDeleting(false);
+          setConfirmDelete(false);
+        }
+      }
+
+      const displayName = (profile && profile.name) || (user && user.displayName) || "User";
+      const email = (user && user.email) || "";
+
+      return (
+        <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
+          <div onClick={onClose} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.7)"}}/>
+          <div style={{position:"relative",background:"#101010",borderRadius:"20px 20px 0 0",
+            border:"1px solid #1E1E1E",borderBottom:"none",paddingBottom:48}}>
+
+            {/* Handle */}
+            <div style={{display:"flex",justifyContent:"center",padding:"14px 0 0"}}>
+              <div style={{width:36,height:4,borderRadius:2,background:"#2A2A2A"}}/>
+            </div>
+
+            {/* User info + X on same row */}
+            <div style={{padding:"20px 28px 20px",borderBottom:"1px solid #1A1A1A",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div>
+                <div style={{fontSize:11,letterSpacing:3,textTransform:"uppercase",color:"#F2F2F2",fontWeight:600}}>
+                  {displayName}
+                </div>
+                <div style={{fontSize:10,letterSpacing:2,textTransform:"uppercase",color:"#666666",marginTop:6}}>
+                  {email}
+                </div>
+              </div>
+              <button onClick={onClose} style={{background:"none",border:"none",color:"#3A3A3A",cursor:"pointer",padding:4,flexShrink:0}}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+
+            {/* Actions */}
+            {!confirmDelete ? (
+              <div style={{padding:"8px 0"}}>
+                <button onClick={onSignOut} style={{
+                  width:"100%",padding:"16px 28px",background:"none",border:"none",
+                  color:"#BBBBBB",cursor:"pointer",fontFamily:"inherit",
+                  fontSize:14,textAlign:"left",display:"flex",alignItems:"center",gap:14,
+                }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                    <polyline points="16 17 21 12 16 7"/>
+                    <line x1="21" y1="12" x2="9" y2="12"/>
+                  </svg>
+                  <span style={{fontSize:11,letterSpacing:3,textTransform:"uppercase",fontWeight:500}}>Sign Out</span>
+                </button>
+                <div style={{height:1,background:"#1A1A1A",margin:"0 28px"}}/>
+                <button onClick={()=>setConfirmDelete(true)} style={{
+                  width:"100%",padding:"16px 28px",background:"none",border:"none",
+                  color:"#CC4444",cursor:"pointer",fontFamily:"inherit",
+                  fontSize:14,textAlign:"left",display:"flex",alignItems:"center",gap:14,
+                }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                    <path d="M10 11v6M14 11v6M9 6V4h6v2"/>
+                  </svg>
+                  <span style={{fontSize:11,letterSpacing:3,textTransform:"uppercase",fontWeight:500}}>Delete Account</span>
+                </button>
+              </div>
+            ) : (
+              <div style={{padding:"20px 28px"}}>
+                <div style={{fontSize:11,letterSpacing:3,textTransform:"uppercase",color:"#888",fontWeight:600,marginBottom:10}}>Delete your account?</div>
+                <Lbl style={{display:"block",marginBottom:20,lineHeight:1.7}}>
+                  This will permanently delete your account and all habit data. Cannot be undone.
+                </Lbl>
+                <div style={{display:"flex",gap:10}}>
+                  <button onClick={()=>setConfirmDelete(false)} style={{flex:1,padding:"12px",borderRadius:10,background:"#161616",border:"1px solid #1E1E1E",color:"#888",cursor:"pointer",fontFamily:"inherit",fontSize:11,letterSpacing:2,textTransform:"uppercase"}}>
+                    Cancel
+                  </button>
+                  <button onClick={handleDelete} disabled={deleting} style={{flex:1,padding:"12px",borderRadius:10,background:"#3A0A0A",border:"1px solid #5A1A1A",color:"#EF5350",cursor:deleting?"not-allowed":"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:2,textTransform:"uppercase"}}>
+                    {deleting ? "Deleting..." : "Delete"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ── Root ─────────────────────────────────────────────────────
+    function Root() {
+      const [user,      setUser]      = useState(undefined);
+      const [profile,   setProfile]   = useState(null);
+      const [needsOnboard, setNeedsOnboard] = useState(false);
+      const [tab,       setTab]       = useState("today");
+      const [data,      setData]      = useState({});
+      const [habits,    setHabits]    = useState(DEFAULT_HABITS);
+      const [menuOpen,  setMenuOpen]  = useState(false);
+
+      useEffect(() => {
+        const unsub = window._auth.onAuthStateChanged(async function(u) {
+          document.getElementById("loading").style.display = "none";
+          setMenuOpen(false);
+          if (u) {
+            setUID(u.uid);
+            // Save last used email for login screen
+            localStorage.setItem("last_email", u.email || "");
+            localStorage.setItem("last_name",  u.displayName || "");
+
+            const [d, h, p] = await Promise.all([loadData(), loadHabits(), loadProfile()]);
+            if (d && Object.keys(d).length) setData(d);
+            if (h && h.length) setHabits(h);
+
+            if (!p) {
+              setUser(u);
+              setNeedsOnboard(true);
+            } else {
+              setProfile(p);
+              setUser(u);
+              setNeedsOnboard(false);
+            }
+          } else {
+            setUID(null);
+            setUser(null);
+            setNeedsOnboard(false);
+          }
+        });
+        return function() { unsub(); };
+      }, []);
+
+      const handleSet = useCallback(function(updater) {
+        setData(function(prev) {
+          const next = typeof updater === "function" ? updater(prev) : updater;
+          saveData(next);
+          return next;
+        });
+      }, []);
+
+      async function clearAll() {
+        setData({});
+        await saveData({});
+      }
+
+      function handleSignOut() {
+        setMenuOpen(false);
+        window._auth.signOut();
+      }
+
+      if (user === undefined) return null;
+      if (!user) return <LoginScreen />;
+      if (needsOnboard) return <OnboardingScreen user={user} onComplete={function(p){ setProfile(p); setNeedsOnboard(false); }}/>;
+
+      return (
+        <div style={{fontFamily:"'Aptos','Aptos Display','Calibri','Segoe UI',system-ui,sans-serif",background:"#080808",color:"#F2F2F2",minHeight:"100vh",maxWidth:430,margin:"0 auto",overflowX:"hidden"}}>
+          {tab==="today" && <TodayScreen data={data} setData={handleSet} habits={habits} setHabits={setHabits} onClearAll={clearAll} user={user} onMenuOpen={()=>setMenuOpen(true)}/>}
+          {tab==="month" && <MonthScreen data={data} habits={habits}/>}
+          {tab==="stats" && <StatsScreen data={data} habits={habits}/>}
+          <Nav tab={tab} setTab={setTab}/>
+          {menuOpen && <UserMenu user={user} profile={profile} onClose={()=>setMenuOpen(false)} onSignOut={handleSignOut} onDeleteAccount={()=>{ setUID(null); setUser(null); setMenuOpen(false); setData({}); setHabits(DEFAULT_HABITS); }}/>}
+        </div>
+      );
+    }
+
+    class ErrorBoundary extends React.Component {
+      constructor(props) { super(props); this.state = { hasError: false, error: "" }; }
+      static getDerivedStateFromError(e) { return { hasError: true, error: e.message }; }
+      render() {
+        if (this.state.hasError) return (
+          <div style={{background:"#080808",minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16,padding:32,fontFamily:"'Aptos',sans-serif"}}>
+            <div style={{fontSize:10,letterSpacing:3,color:"#888",textTransform:"uppercase"}}>Something went wrong</div>
+            <div style={{fontSize:11,color:"#3A3A3A",textAlign:"center"}}>{this.state.error}</div>
+            <button onClick={()=>window.location.reload()} style={{padding:"10px 24px",background:"#F2F2F2",color:"#080808",border:"none",borderRadius:8,cursor:"pointer",fontSize:10,letterSpacing:2,textTransform:"uppercase",fontFamily:"inherit"}}>Reload</button>
+          </div>
+        );
+        return this.props.children;
+      }
+    }
+
+    ReactDOM.render(
+      React.createElement(ErrorBoundary, null, React.createElement(Root)),
+      document.getElementById("root")
+    );
+  </script>
+</body>
+</html>
