@@ -505,11 +505,23 @@ function MonthScreen({data,habits}){
   }
   const prev=()=>mo===0?(setYr(y=>y-1),setMo(11)):setMo(m=>m-1);
   const next=()=>mo===11?(setYr(y=>y+1),setMo(0)):setMo(m=>m+1);
+  
+  // Year change functionality
+  function changeYear(){
+    const newYear = prompt(`Enter year (2020-2030):`, String(yr));
+    if(newYear && !isNaN(newYear)){
+      const y = parseInt(newYear);
+      if(y >= 2020 && y <= 2030) setYr(y);
+    }
+  }
 
   return(
     <div style={{paddingBottom:100}}>
       <div style={{padding:"52px 24px 24px",display:"flex",alignItems:"flex-end",justifyContent:"space-between"}}>
-        <div><Lbl>{String(yr)}</Lbl><div style={{fontSize:32,fontWeight:300,letterSpacing:-1,marginTop:4,color:T.text}}>{MONTHS[mo]}</div></div>
+        <div onClick={changeYear} style={{cursor:"pointer"}}>
+          <Lbl style={{cursor:"pointer"}}>{String(yr)}</Lbl>
+          <div style={{fontSize:32,fontWeight:300,letterSpacing:-1,marginTop:4,color:T.text}}>{MONTHS[mo]}</div>
+        </div>
         <div style={{display:"flex",gap:4}}><IBtn icon="chevL" onClick={prev}/><IBtn icon="chevR" onClick={next}/></div>
       </div>
       <Hr/>
@@ -766,18 +778,23 @@ function App(){
       "Build discipline",
       "Get fit",
       "Clean lifestyle",
-      "All of the above",
+      "Better health",
+      "Other",
     ];
 
     function OnboardingScreen({ user, onComplete }) {
       const [step,   setStep]   = useState(0); // 0=name, 1=goal
       const [name,   setName]   = useState((user && user.displayName) || "");
-      const [goal,   setGoal]   = useState("");
+      const [goals,  setGoals]  = useState([]); // Multiple selections
       const [saving, setSaving] = useState(false);
+      
+      function toggleGoal(g) {
+        setGoals(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
+      }
 
       async function handleSave() {
         setSaving(true);
-        const profile = { name: name.trim(), goal: goal, email: user.email, createdAt: new Date().toISOString() };
+        const profile = { name: name.trim(), goals: goals, email: user.email, createdAt: new Date().toISOString() };
         await saveProfile(profile);
         onComplete(profile);
       }
@@ -866,27 +883,27 @@ function App(){
             {/* Name appears bold here */}
             <div style={{fontSize:38,fontWeight:300,color:"#F2F2F2",letterSpacing:-1,lineHeight:1.15,marginBottom:36}}>
               Hey <span style={{fontWeight:500}}>{name.trim()}</span>,<br/>
-              your goal?
+              what's your goal?
             </div>
 
-            {/* Goal options — horizontal pill style */}
+            {/* Goal options — checkbox style for multiple selection */}
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
               {GOALS.map((g,i) => (
-                <button key={g} onClick={()=>setGoal(g)} style={{
+                <button key={g} onClick={() => toggleGoal(g)} style={{
                   padding:"14px 20px",
                   borderRadius:10,
                   textAlign:"left",
-                  background:goal===g?"#F2F2F2":"transparent",
-                  color:goal===g?"#080808":"#AAAAAA",
-                  border:`1px solid ${goal===g?"#F2F2F2":"#333333"}`,
+                  background:goals.includes(g)?"#F2F2F2":"transparent",
+                  color:goals.includes(g)?"#080808":"#AAAAAA",
+                  border:`1px solid ${goals.includes(g)?"#F2F2F2":"#333333"}`,
                   cursor:"pointer",fontFamily:"inherit",
-                  fontSize:11,fontWeight:goal===g?600:400,
-                  letterSpacing:goal===g?2:1.5,textTransform:"uppercase",
+                  fontSize:11,fontWeight:goals.includes(g)?600:400,
+                  letterSpacing:goals.includes(g)?2:1.5,textTransform:"uppercase",
                   transition:"all 0.2s",
                   display:"flex",alignItems:"center",justifyContent:"space-between",
                 }}>
                   {g}
-                  {goal===g && (
+                  {goals.includes(g) && (
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <polyline points="20 6 9 17 4 12"/>
                     </svg>
@@ -898,12 +915,12 @@ function App(){
 
           {/* Bottom — full width Get Started */}
           <div style={{padding:"24px 32px 40px"}}>
-            <button onClick={handleSave} disabled={!goal||saving} style={{
+            <button onClick={handleSave} disabled={goals.length === 0 || saving} style={{
               width:"100%",padding:"16px",borderRadius:14,
-              background:goal?"#F2F2F2":"transparent",
-              color:goal?"#080808":"#888888",
-              border:`1px solid ${goal?"#F2F2F2":"#444444"}`,
-              cursor:goal?"pointer":"default",
+              background:goals.length > 0?"#F2F2F2":"transparent",
+              color:goals.length > 0?"#080808":"#888888",
+              border:`1px solid ${goals.length > 0?"#F2F2F2":"#444444"}`,
+              cursor:goals.length > 0?"pointer":"default",
               fontFamily:"inherit",fontSize:11,fontWeight:600,
               letterSpacing:4,textTransform:"uppercase",transition:"all 0.25s"
             }}>{saving?"Saving...":"Get Started"}</button>
@@ -916,21 +933,8 @@ function App(){
     function LoginScreen() {
       const [loading, setLoading] = useState(false);
       const [error, setError]     = useState("");
-      const lastEmail = localStorage.getItem("last_email") || "";
-      const lastName  = localStorage.getItem("last_name")  || "";
 
       async function handleLogin() {
-        setLoading(true); setError("");
-        try {
-          if (lastEmail) window._provider.setCustomParameters({ login_hint: lastEmail });
-          await window._auth.signInWithPopup(window._provider);
-        } catch(e) {
-          setError("Sign in failed. Please try again.");
-          setLoading(false);
-        }
-      }
-
-      async function handleDifferent() {
         setLoading(true); setError("");
         try {
           window._provider.setCustomParameters({ prompt: "select_account" });
@@ -955,63 +959,23 @@ function App(){
             </div>
           </div>
 
-          {lastEmail ? (
-            <div style={{width:"100%",display:"flex",flexDirection:"column",gap:10}}>
-              {/* Returning user — show their account */}
-              <button onClick={handleLogin} disabled={loading} style={{
-                width:"100%",padding:"14px 16px",borderRadius:12,
-                background:loading?"#101010":"#F2F2F2",
-                color:loading?"#3A3A3A":"#080808",
-                border:"none",cursor:loading?"not-allowed":"pointer",
-                fontFamily:"inherit",transition:"all 0.2s",
-                display:"flex",alignItems:"center",gap:12,
-              }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" style={{flexShrink:0}}>
-                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
-                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-                </svg>
-                <div style={{flex:1,textAlign:"left"}}>
-                  {loading ? (
-                    <span style={{fontSize:11,fontWeight:600,letterSpacing:3,textTransform:"uppercase",color:"#3A3A3A"}}>Signing in...</span>
-                  ) : (
-                    <>
-                      <div style={{fontSize:10,letterSpacing:3,textTransform:"uppercase",color:"#3A3A3A",marginBottom:3}}>Continue as</div>
-                      <div style={{fontSize:11,fontWeight:600,letterSpacing:2,textTransform:"uppercase",color:"#080808"}}>{lastEmail}</div>
-                    </>
-                  )}
-                </div>
-              </button>
-
-              <button onClick={handleDifferent} disabled={loading} style={{
-                width:"100%",padding:"12px 16px",borderRadius:12,
-                background:"transparent",color:"#888",
-                border:"1px solid #1E1E1E",cursor:loading?"not-allowed":"pointer",
-                fontFamily:"inherit",fontSize:11,letterSpacing:2,textTransform:"uppercase",
-              }}>
-                Use different account
-              </button>
-            </div>
-          ) : (
-            <button onClick={handleLogin} disabled={loading} style={{
-              width:"100%",padding:"14px",borderRadius:12,
-              background:loading?"#101010":"#F2F2F2",
-              color:loading?"#3A3A3A":"#080808",
-              border:"none",cursor:loading?"not-allowed":"pointer",
-              fontFamily:"inherit",fontSize:11,fontWeight:600,
-              letterSpacing:3,textTransform:"uppercase",transition:"all 0.2s",
-              display:"flex",alignItems:"center",justifyContent:"center",gap:10,
-            }}>
-              <svg width="18" height="18" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-              </svg>
-              {loading ? "Signing in..." : "Continue with Google"}
-            </button>
-          )}
+          <button onClick={handleLogin} disabled={loading} style={{
+            width:"100%",padding:"14px",borderRadius:12,
+            background:loading?"#101010":"#F2F2F2",
+            color:loading?"#3A3A3A":"#080808",
+            border:"none",cursor:loading?"not-allowed":"pointer",
+            fontFamily:"inherit",fontSize:11,fontWeight:600,
+            letterSpacing:3,textTransform:"uppercase",transition:"all 0.2s",
+            display:"flex",alignItems:"center",justifyContent:"center",gap:10,
+          }}>
+            <svg width="18" height="18" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+            </svg>
+            {loading ? "Signing in..." : "Continue with Google"}
+          </button>
 
           {error && <div style={{marginTop:16,fontSize:11,color:"#888",letterSpacing:1,textAlign:"center"}}>{error}</div>}
         </div>
