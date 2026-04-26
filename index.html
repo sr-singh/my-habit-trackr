@@ -1120,6 +1120,7 @@ function App(){
       const [habits,    setHabits]    = useState(DEFAULT_HABITS);
       const [menuOpen,  setMenuOpen]  = useState(false);
       const [managingHabits, setManagingHabits] = useState(false);
+      const [monthKey, setMonthKey] = useState(0);
       const [currentDateKey, setCurrentDateKey] = useState(todayKey());
 
       useEffect(() => {
@@ -1180,9 +1181,9 @@ function App(){
             ? <ManageHabitsPage habits={habits} setHabits={setHabits} onClose={()=>setManagingHabits(false)} onClearAll={clearAll}/>
             : <>
                 {tab==="today" && <TodayScreen data={data} setData={handleSet} habits={habits} setHabits={setHabits} onClearAll={clearAll} user={user} onMenuOpen={()=>setMenuOpen(true)} currentDateKey={currentDateKey} setCurrentDateKey={setCurrentDateKey}/>}
-                {tab==="month" && <MonthScreen data={data} habits={habits}/>}
+                {tab==="month" && <MonthScreen key={monthKey} data={data} habits={habits}/>}
                 {tab==="stats" && <StatsScreen data={data} habits={habits}/>}
-                <Nav tab={tab} setTab={id=>{setTab(id);if(id==="today")setCurrentDateKey(todayKey());}}/>
+                <Nav tab={tab} setTab={id=>{setTab(id);if(id==="today")setCurrentDateKey(todayKey());if(id==="month")setMonthKey(k=>k+1);}}/>
               </>
           }
           {menuOpen && <UserMenu user={user} profile={profile} onClose={()=>setMenuOpen(false)} onSignOut={handleSignOut} onDeleteAccount={()=>{ setUID(null); setUser(null); setMenuOpen(false); setData({}); setHabits(DEFAULT_HABITS); }} habits={habits} setHabits={setHabits} onClearAll={clearAll} currentDateKey={currentDateKey} data={data} setData={handleSet} onManageHabits={()=>setManagingHabits(true)}/>}
