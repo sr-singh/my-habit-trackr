@@ -309,9 +309,8 @@ function ManageHabitsPage({habits,setHabits,onClose,onClearAll}){
   return(
     <div style={{background:T.bg,minHeight:"100vh",paddingBottom:60}}>
       <div style={{padding:"52px 24px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:`1px solid ${T.border}`}}>
-        <button onClick={onClose} style={{background:"none",border:"none",color:T.textMid,cursor:"pointer",display:"flex",alignItems:"center",gap:6,padding:0,fontFamily:"inherit"}}>
-          <span style={{fontSize:16,lineHeight:1}}>←</span>
-          <span style={{fontSize:10,letterSpacing:2,textTransform:"uppercase",fontWeight:500}}>Back</span>
+        <button onClick={onClose} style={{background:"none",border:"none",color:T.text,cursor:"pointer",display:"flex",alignItems:"center",gap:4,padding:0,fontFamily:"inherit"}}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
         </button>
         <div style={{fontSize:11,letterSpacing:3,textTransform:"uppercase",color:T.textMid,fontWeight:600}}>Manage Habits</div>
         <div style={{width:52}}/>
@@ -320,32 +319,32 @@ function ManageHabitsPage({habits,setHabits,onClose,onClearAll}){
       <div style={{marginTop:8}}>
         {habits.map((h,i,arr)=>(
           <div key={h.id} style={{borderBottom:i<arr.length-1?`1px solid ${T.border}`:"none"}}>
-            {/* Habit row */}
-            <div style={{padding:"14px 24px"}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                    <span style={{fontSize:11,letterSpacing:3,textTransform:"uppercase",color:T.text,fontWeight:500}}>{h.label}</span>
-                    <Lbl style={{color:T.textLow}}>{h.createdAt||todayKey()}</Lbl>
-                  </div>
-                  <Lbl style={{marginTop:5,display:"block"}}>{h.type==="number"?"Number":h.restAllowed?"Done / Miss / Rest":h.streakHabit?"Done / Miss / Streak":"Done / Miss"}</Lbl>
-                </div>
-                <div style={{display:"flex",gap:6,flexShrink:0}}>
-                  <IBtn icon="edit" onClick={()=>setEditId(editId===h.id?null:h.id)} size={34} is={14} active={editId===h.id}/>
-                  <IBtn icon="trash" onClick={()=>setDeleteId(h.id)} size={34} is={14}/>
-                </div>
-              </div>
-            </div>
-            {/* Inline edit form */}
-            {editId===h.id&&(
-              <div style={{padding:"4px 24px 20px",background:T.surface,borderTop:`1px solid ${T.border}`}}>
-                <Lbl style={{color:T.textMid,display:"block",marginBottom:12,marginTop:14}}>Edit Habit</Lbl>
+            {editId===h.id ? (
+              /* Edit mode: show only the form, no habit row */
+              <div style={{padding:"20px 24px",background:T.surface}}>
                 <HabitForm
                   initial={h}
                   onSave={fields=>save(h.id,fields)}
                   onCancel={()=>setEditId(null)}
                   saveLabel="Save Changes"
                 />
+              </div>
+            ) : (
+              /* Normal row */
+              <div style={{padding:"14px 24px"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                      <span style={{fontSize:11,letterSpacing:3,textTransform:"uppercase",color:T.text,fontWeight:500}}>{h.label}</span>
+                      <Lbl style={{color:T.textLow}}>{h.createdAt||todayKey()}</Lbl>
+                    </div>
+                    <Lbl style={{marginTop:5,display:"block"}}>{h.type==="number"?"Number":h.restAllowed?"Done / Miss / Rest":h.streakHabit?"Done / Miss / Streak":"Done / Miss"}</Lbl>
+                  </div>
+                  <div style={{display:"flex",gap:6,flexShrink:0}}>
+                    <IBtn icon="edit" onClick={()=>setEditId(h.id)} size={34} is={14}/>
+                    <IBtn icon="trash" onClick={()=>setDeleteId(h.id)} size={34} is={14}/>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -357,7 +356,7 @@ function ManageHabitsPage({habits,setHabits,onClose,onClearAll}){
       {deleteHabit && (
         <ConfirmDialog
           title={`Delete ${deleteHabit.label.toUpperCase()}`}
-          description={`Are you sure you want to delete ${deleteHabit.label.toUpperCase()}?`}
+          description={`Are you sure you want to delete\n${deleteHabit.label.toUpperCase()}?`}
           confirmLabel="Delete"
           confirmStyle={{background:"#F2F2F2",border:"1px solid #F2F2F2",color:"#080808"}}
           onConfirm={()=>remove(deleteId)}
@@ -951,7 +950,7 @@ function App(){
           <div style={{position:"relative",background:"#141414",borderRadius:16,border:"1px solid #2A2A2A",padding:"28px 24px 24px",width:"100%",maxWidth:340}}>
             <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:"#F2F2F2",fontWeight:600,marginBottom:description?12:24}}>{title}</div>
             {description && (
-              <div style={{fontSize:12,fontWeight:500,letterSpacing:"2.5px",color:"#666666",fontFamily:"'Aptos','Calibri','Segoe UI',system-ui,sans-serif",lineHeight:1.9,marginBottom:24}}>{description}</div>
+              <div style={{fontSize:12,fontWeight:500,letterSpacing:"2.5px",color:"#666666",fontFamily:"'Aptos','Calibri','Segoe UI',system-ui,sans-serif",lineHeight:1.9,marginBottom:24,whiteSpace:"pre-line"}}>{description}</div>
             )}
             <div style={{display:"flex",gap:8}}>
               <button onClick={onBack} style={{flex:1,padding:"13px",borderRadius:8,background:"#161616",border:"1px solid #1E1E1E",color:"#888",cursor:"pointer",fontFamily:"inherit",fontSize:11,letterSpacing:2,textTransform:"uppercase"}}>Cancel</button>
