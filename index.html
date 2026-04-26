@@ -144,7 +144,7 @@ function calcStreak(id,data) {
 const T={bg:"#080808",surface:"#101010",surfaceHi:"#161616",border:"#1E1E1E",borderHi:"#2A2A2A",text:"#F2F2F2",textMid:"#888888",textLow:"#555555"};
 const Lbl=({children,style={}})=><span style={{fontSize:10,letterSpacing:3,textTransform:"uppercase",color:T.textLow,fontWeight:500,...style}}>{children}</span>;
 const Hr=({style={}})=><div style={{height:1,background:T.border,...style}}/>;
-
+const HrInset=({style={}})=><div style={{height:1,background:T.border,margin:"0 24px",...style}}/>;
 const Icon=({n,s=18})=>{
   const p={
     today: <><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></>,
@@ -308,11 +308,11 @@ function ManageHabitsPage({habits,setHabits,onClose,onClearAll}){
 
   return(
     <div style={{background:T.bg,minHeight:"100vh",paddingBottom:60}}>
-      <div style={{padding:"52px 24px 24px",position:"relative",display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
-        <button onClick={onClose} style={{background:"none",border:"none",color:T.textMid,cursor:"pointer",padding:0,fontFamily:"inherit",position:"absolute",left:24,bottom:28}}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      <div style={{padding:"52px 24px 24px",display:"flex",alignItems:"flex-end",justifyContent:"center",position:"relative"}}>
+        <button onClick={onClose} style={{background:"none",border:"none",color:T.textMid,cursor:"pointer",padding:0,position:"absolute",left:24,bottom:26}}>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><line x1="21" y1="12" x2="3" y2="12"/><polyline points="10 19 3 12 10 5"/></svg>
         </button>
-        <div style={{fontSize:32,fontWeight:300,letterSpacing:-1,color:T.text}}>Manage Habits</div>
+        <div style={{fontSize:26,fontWeight:300,letterSpacing:-0.5,color:T.text}}>Manage Habits</div>
       </div>
       <Hr/>
 
@@ -320,7 +320,6 @@ function ManageHabitsPage({habits,setHabits,onClose,onClearAll}){
         {habits.map((h,i,arr)=>(
           <div key={h.id}>
             {editId===h.id ? (
-              /* Edit mode: show only the form, no habit row */
               <div style={{padding:"20px 24px",background:T.surface}}>
                 <HabitForm
                   initial={h}
@@ -330,7 +329,6 @@ function ManageHabitsPage({habits,setHabits,onClose,onClearAll}){
                 />
               </div>
             ) : (
-              /* Normal row */
               <div style={{padding:"14px 24px"}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
                   <div style={{flex:1,minWidth:0}}>
@@ -347,7 +345,7 @@ function ManageHabitsPage({habits,setHabits,onClose,onClearAll}){
                 </div>
               </div>
             )}
-            {i<arr.length-1&&<Hr/>}
+            {i<arr.length-1&&<HrInset/>}
           </div>
         ))}
       </div>
@@ -386,19 +384,17 @@ function TodayScreen({data,setData,habits,setHabits,onClearAll,user,onMenuOpen,c
   return(
     <div style={{paddingBottom:100}}>
       <div style={{padding:"52px 24px 20px"}}>
-        {/* Day name on top, date below */}
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
           <IBtn icon="chevL" onClick={()=>setDateKey(offsetDate(dateKey,-1))}/>
           <div style={{textAlign:"center"}}>
             <Lbl style={{display:"block",color:T.textMid}}>{DAYS[dt.getDay()]}</Lbl>
             <div style={{fontSize:26,fontWeight:300,letterSpacing:-0.5,color:T.text,marginTop:4}}>
-              {isToday?"Today":`${dt.getDate()} ${MONTHS[dt.getMonth()]}`}
+              {dt.getDate()} {MONTHS[dt.getMonth()]}
             </div>
           </div>
           <IBtn icon="chevR" onClick={()=>setDateKey(offsetDate(dateKey,1))}/>
         </div>
 
-        {/* Progress + burger only */}
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{height:1,background:T.border,flex:1,position:"relative",overflow:"hidden"}}>
             <div style={{position:"absolute",top:0,left:0,height:"100%",background:T.text,width:`${visible.length?(logged/visible.length)*100:0}%`,transition:"width 0.4s ease"}}/>
@@ -450,7 +446,7 @@ function HabitRow({habit,value,onChange,isLast}){
           </div>
         )}
       </div>
-      {!isLast&&<Hr/>}
+      {!isLast&&<HrInset/>}
     </div>
   );
 }
@@ -484,7 +480,7 @@ function MonthScreen({data,habits}){
             <Lbl style={{cursor:"pointer"}}>{String(yr)}</Lbl>
             <button onClick={(e)=>{e.stopPropagation();setYr(y=>y+1);}} style={{background:"none",border:"none",color:"#888",cursor:"pointer",fontSize:10,padding:"2px 4px",opacity:0.7,transition:"all 0.2s"}}>›</button>
           </div>
-          <div style={{fontSize:32,fontWeight:300,letterSpacing:-1,marginTop:4,color:T.text}}>{MONTHS[mo]}</div>
+          <div style={{fontSize:26,fontWeight:300,letterSpacing:-0.5,marginTop:4,color:T.text}}>{MONTHS[mo]}</div>
         </div>
         <div style={{display:"flex",gap:4}}><IBtn icon="chevL" onClick={prev}/><IBtn icon="chevR" onClick={next}/></div>
       </div>
@@ -648,7 +644,7 @@ function StatsScreen({data,habits}){
   return(
     <div style={{paddingBottom:100}}>
       <div style={{padding:"52px 24px 24px",textAlign:"center"}}>
-        <div style={{fontSize:32,fontWeight:300,letterSpacing:-1,color:T.text}}>Report</div>
+        <div style={{fontSize:26,fontWeight:300,letterSpacing:-0.5,color:T.text}}>Report</div>
       </div>
       <Hr/>
       <div style={{padding:"28px 24px",display:"flex",flexDirection:"column",gap:40}}>
