@@ -308,17 +308,17 @@ function ManageHabitsPage({habits,setHabits,onClose,onClearAll}){
 
   return(
     <div style={{background:T.bg,minHeight:"100vh",paddingBottom:60}}>
-      <div style={{padding:"52px 24px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:`1px solid ${T.border}`}}>
-        <button onClick={onClose} style={{background:"none",border:"none",color:T.text,cursor:"pointer",display:"flex",alignItems:"center",gap:4,padding:0,fontFamily:"inherit"}}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      <div style={{padding:"52px 24px 24px",position:"relative",display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+        <button onClick={onClose} style={{background:"none",border:"none",color:T.textMid,cursor:"pointer",padding:0,fontFamily:"inherit",position:"absolute",left:24,bottom:28}}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
         </button>
-        <div style={{fontSize:11,letterSpacing:3,textTransform:"uppercase",color:T.textMid,fontWeight:600}}>Manage Habits</div>
-        <div style={{width:52}}/>
+        <div style={{fontSize:32,fontWeight:300,letterSpacing:-1,color:T.text}}>Manage Habits</div>
       </div>
+      <Hr/>
 
-      <div style={{marginTop:8}}>
+      <div>
         {habits.map((h,i,arr)=>(
-          <div key={h.id} style={{borderBottom:i<arr.length-1?`1px solid ${T.border}`:"none"}}>
+          <div key={h.id}>
             {editId===h.id ? (
               /* Edit mode: show only the form, no habit row */
               <div style={{padding:"20px 24px",background:T.surface}}>
@@ -347,10 +347,11 @@ function ManageHabitsPage({habits,setHabits,onClose,onClearAll}){
                 </div>
               </div>
             )}
+            {i<arr.length-1&&<Hr/>}
           </div>
         ))}
       </div>
-      <Hr style={{margin:"8px 0"}}/>
+      <Hr/>
       <AddNewSection onAdd={add}/>
 
       {deleteHabit && (
@@ -427,26 +428,29 @@ function HabitRow({habit,value,onChange,isLast}){
   const isN=habit.type==="number";
   const dv=isN?(has?`${value}`:"—"):(value==="Y"?"Done":value==="N"?"Missed":value==="R"?"Rest":"—");
   return(
-    <div style={{padding:"20px 24px",borderBottom:isLast?"none":`1px solid ${T.border}`}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <span style={{fontSize:11,fontWeight:500,color:T.text,letterSpacing:3,textTransform:"uppercase"}}>{habit.label}</span>
-        <Lbl style={{color:has?T.textMid:T.textLow}}>{dv}</Lbl>
+    <div>
+      <div style={{padding:"20px 24px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+          <span style={{fontSize:11,fontWeight:500,color:T.text,letterSpacing:3,textTransform:"uppercase"}}>{habit.label}</span>
+          <Lbl style={{color:has?T.textMid:T.textLow}}>{dv}</Lbl>
+        </div>
+        {!isN&&(
+          <div style={{display:"flex",gap:6}}>
+            {[{v:"Y",l:"Done"},{v:"N",l:"Missed"},...(habit.restAllowed?[{v:"R",l:"Rest"}]:[])].map(btn=>{
+              const active=value===btn.v;
+              return <button key={btn.v} onClick={()=>onChange(active?undefined:btn.v)} style={{flex:1,padding:"10px 0",borderRadius:8,cursor:"pointer",fontFamily:"inherit",background:active?T.text:T.surfaceHi,color:active?T.bg:T.textMid,border:`1px solid ${active?T.text:T.borderHi}`,fontSize:10,fontWeight:500,letterSpacing:2,textTransform:"uppercase",transition:"all 0.15s"}}>{btn.l}</button>;
+            })}
+          </div>
+        )}
+        {isN&&(
+          <div style={{display:"flex",gap:8}}>
+            <input type="number" step="0.1" min="0" max="9999" placeholder="0.0" value={wi} onChange={e=>setWi(e.target.value)} onBlur={()=>{if(wi!=="")onChange(parseFloat(wi));}}
+              style={{flex:1,background:T.surfaceHi,border:`1px solid ${T.borderHi}`,borderRadius:8,padding:"10px 14px",color:T.text,fontSize:16,fontFamily:"inherit",outline:"none"}}/>
+            <button onClick={()=>{if(wi!=="")onChange(parseFloat(wi));}} style={{background:wi!==""?T.text:T.surfaceHi,color:wi!==""?T.bg:T.textLow,border:`1px solid ${wi!==""?T.text:T.borderHi}`,borderRadius:8,padding:"10px 20px",fontSize:10,fontWeight:500,letterSpacing:2,textTransform:"uppercase",cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s"}}>Log</button>
+          </div>
+        )}
       </div>
-      {!isN&&(
-        <div style={{display:"flex",gap:6}}>
-          {[{v:"Y",l:"Done"},{v:"N",l:"Missed"},...(habit.restAllowed?[{v:"R",l:"Rest"}]:[])].map(btn=>{
-            const active=value===btn.v;
-            return <button key={btn.v} onClick={()=>onChange(active?undefined:btn.v)} style={{flex:1,padding:"10px 0",borderRadius:8,cursor:"pointer",fontFamily:"inherit",background:active?T.text:T.surfaceHi,color:active?T.bg:T.textMid,border:`1px solid ${active?T.text:T.borderHi}`,fontSize:10,fontWeight:500,letterSpacing:2,textTransform:"uppercase",transition:"all 0.15s"}}>{btn.l}</button>;
-          })}
-        </div>
-      )}
-      {isN&&(
-        <div style={{display:"flex",gap:8}}>
-          <input type="number" step="0.1" min="0" max="9999" placeholder="0.0" value={wi} onChange={e=>setWi(e.target.value)} onBlur={()=>{if(wi!=="")onChange(parseFloat(wi));}}
-            style={{flex:1,background:T.surfaceHi,border:`1px solid ${T.borderHi}`,borderRadius:8,padding:"10px 14px",color:T.text,fontSize:16,fontFamily:"inherit",outline:"none"}}/>
-          <button onClick={()=>{if(wi!=="")onChange(parseFloat(wi));}} style={{background:wi!==""?T.text:T.surfaceHi,color:wi!==""?T.bg:T.textLow,border:`1px solid ${wi!==""?T.text:T.borderHi}`,borderRadius:8,padding:"10px 20px",fontSize:10,fontWeight:500,letterSpacing:2,textTransform:"uppercase",cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s"}}>Log</button>
-        </div>
-      )}
+      {!isLast&&<Hr/>}
     </div>
   );
 }
@@ -643,7 +647,7 @@ function StatsScreen({data,habits}){
 
   return(
     <div style={{paddingBottom:100}}>
-      <div style={{padding:"52px 24px 24px"}}>
+      <div style={{padding:"52px 24px 24px",textAlign:"center"}}>
         <div style={{fontSize:32,fontWeight:300,letterSpacing:-1,color:T.text}}>Report</div>
       </div>
       <Hr/>
