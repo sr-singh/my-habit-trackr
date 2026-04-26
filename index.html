@@ -35,12 +35,12 @@
       // Favicon — using default site favicon
 
       // Manifest via blob
-      var manifest = '{\n  "name": "Habit Tracker",\n  "short_name": "Habit Tracker",\n  "description": "Track your daily habits",\n  "start_url": "/",\n  "display": "standalone",\n  "background_color": "#080808",\n  "theme_color": "#080808",\n  "orientation": "portrait",\n  "icons": []\n}';
+      var manifest = '{\n  "name": "Habit Tracker",\n  "short_name": "Habit Tracker",\n  "description": "Track your daily habits",\n  "start_url": "/",\n  "display": "standalone",\n  "background_color": "#080808",\n  "theme_color": "#080808",\n  "orientation": "portrait",\n  "icons": [\n    {"src":"ICON48","sizes":"48x48","type":"image/png"},\n    {"src":"ICON96","sizes":"96x96","type":"image/png"},\n    {"src":"ICON144","sizes":"144x144","type":"image/png"},\n    {"src":"ICON192","sizes":"192x192","type":"image/png","purpose":"any"},\n    {"src":"ICON512","sizes":"512x512","type":"image/png","purpose":"any maskable"}\n  ]\n}';
       // Replace icon src with data URIs
       var mObj = JSON.parse(manifest);
       mObj.icons = mObj.icons.map(function(ic) {
         var size = parseInt(ic.sizes.split('x')[0]);
-        return Object.assign({}, ic, {src: icons[size] || ic.src});
+        return Object.assign({}, ic, {src: icons[size] || icons[192] || ic.src});
       });
       var blob = new Blob([JSON.stringify(mObj)], {type:'application/json'});
       var mLink = document.createElement('link');
