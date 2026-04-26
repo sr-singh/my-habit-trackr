@@ -288,8 +288,9 @@ function AddNewSection({onAdd}){
   );
 }
 
-function ManageSheet({habits,setHabits,onClose,onClearAll}){
+function ManageHabitsPage({habits,setHabits,onClose,onClearAll}){
   const [editId,setEditId]=useState(null);
+  const [deleteId,setDeleteId]=useState(null);
 
   function add(fields){
     const h={id:"h_"+Date.now(),...fields,createdAt:todayKey()};
@@ -301,62 +302,68 @@ function ManageSheet({habits,setHabits,onClose,onClearAll}){
     setHabits(next); saveHabits(next); setEditId(null);
   }
 
-  function remove(id){const next=habits.filter(h=>h.id!==id);setHabits(next);saveHabits(next);}
+  function remove(id){const next=habits.filter(h=>h.id!==id);setHabits(next);saveHabits(next);setDeleteId(null);}
 
   const editHabit=habits.find(h=>h.id===editId);
+  const deleteHabit=habits.find(h=>h.id===deleteId);
 
   return(
-    <div style={{position:"fixed",inset:0,zIndex:200,display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
-      <div onClick={onClose} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.75)"}}/>
-      <div style={{position:"relative",background:T.surface,borderRadius:"20px 20px 0 0",border:`1px solid ${T.border}`,borderBottom:"none",maxHeight:"90vh",overflowY:"auto",paddingBottom:48}}>
-        <div style={{display:"flex",justifyContent:"center",padding:"14px 0 0"}}><div style={{width:36,height:4,borderRadius:2,background:T.borderHi}}/></div>
-        <div style={{padding:"16px 24px 0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <Lbl style={{color:T.textMid}}>{editId?"Edit Habit":"Manage Habits"}</Lbl>
-          <button onClick={editId ? ()=>setEditId(null) : onClose} style={{background:"none",border:"none",color:T.textLow,cursor:"pointer"}}><Icon n="x" s={18}/></button>
+    <div style={{background:T.bg,minHeight:"100vh",paddingBottom:60}}>
+      <div style={{padding:"52px 24px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:`1px solid ${T.border}`}}>
+        <button onClick={editId ? ()=>setEditId(null) : onClose} style={{background:"none",border:"none",color:T.textMid,cursor:"pointer",display:"flex",alignItems:"center",gap:6,padding:0,fontFamily:"inherit"}}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          <span style={{fontSize:10,letterSpacing:2,textTransform:"uppercase",fontWeight:500}}>Back</span>
+        </button>
+        <div style={{fontSize:11,letterSpacing:3,textTransform:"uppercase",color:T.textMid,fontWeight:600}}>{editId?"Edit Habit":"Manage Habits"}</div>
+        <div style={{width:52}}/>{/* spacer to center title */}
+      </div>
+
+      {editId&&editHabit&&(
+        <div style={{padding:"20px 24px"}}>
+          <HabitForm
+            initial={editHabit}
+            onSave={fields=>save(editId,fields)}
+            onCancel={()=>setEditId(null)}
+            saveLabel="Save Changes"
+          />
         </div>
+      )}
 
-        {/* Edit form — shown inline when editing */}
-        {editId&&editHabit&&(
-          <div style={{padding:"20px 24px"}}>
-            <HabitForm
-              initial={editHabit}
-              onSave={fields=>save(editId,fields)}
-              onCancel={()=>setEditId(null)}
-              saveLabel="Save Changes"
-            />
-          </div>
-        )}
-
-        {/* Habit list — hidden while editing */}
-        {!editId&&(
-          <>
-            <div style={{marginTop:20}}>
-              {habits.map((h,i,arr)=>(
-                <div key={h.id} style={{padding:"14px 24px",borderBottom:i<arr.length-1?`1px solid ${T.border}`:"none"}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                        <span style={{fontSize:11,letterSpacing:3,textTransform:"uppercase",color:T.text,fontWeight:500}}>{h.label}</span>
-                        <Lbl style={{color:T.textLow}}>{h.createdAt||todayKey()}</Lbl>
-                      </div>
-                      <Lbl style={{marginTop:5,display:"block"}}>{h.type==="number"?"Number":h.restAllowed?"Done / Miss / Rest":h.streakHabit?"Done / Miss / Streak":"Done / Miss"}</Lbl>
+      {!editId&&(
+        <>
+          <div style={{marginTop:8}}>
+            {habits.map((h,i,arr)=>(
+              <div key={h.id} style={{padding:"14px 24px",borderBottom:i<arr.length-1?`1px solid ${T.border}`:"none"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                      <span style={{fontSize:11,letterSpacing:3,textTransform:"uppercase",color:T.text,fontWeight:500}}>{h.label}</span>
+                      <Lbl style={{color:T.textLow}}>{h.createdAt||todayKey()}</Lbl>
                     </div>
-                    <div style={{display:"flex",gap:6,flexShrink:0}}>
-                      <IBtn icon="edit" onClick={()=>setEditId(h.id)} size={34} is={14}/>
-                      <IBtn icon="trash" onClick={()=>remove(h.id)} size={34} is={14}/>
-                    </div>
+                    <Lbl style={{marginTop:5,display:"block"}}>{h.type==="number"?"Number":h.restAllowed?"Done / Miss / Rest":h.streakHabit?"Done / Miss / Streak":"Done / Miss"}</Lbl>
+                  </div>
+                  <div style={{display:"flex",gap:6,flexShrink:0}}>
+                    <IBtn icon="edit" onClick={()=>setEditId(h.id)} size={34} is={14}/>
+                    <IBtn icon="trash" onClick={()=>setDeleteId(h.id)} size={34} is={14}/>
                   </div>
                 </div>
-              ))}
-            </div>
-
-            <Hr style={{margin:"8px 0"}}/>
-
-            {/* Add new */}
-            <AddNewSection onAdd={add}/>
-          </>
-        )}
-      </div>
+              </div>
+            ))}
+          </div>
+          <Hr style={{margin:"8px 0"}}/>
+          <AddNewSection onAdd={add}/>
+        </>
+      )}
+      {deleteHabit && (
+        <ConfirmDialog
+          title={`Delete ${deleteHabit.label}`}
+          description={`Are you sure you want to delete ${deleteHabit.label}?`}
+          confirmLabel="Delete"
+          confirmStyle={{background:"#F2F2F2",border:"1px solid #F2F2F2",color:"#080808"}}
+          onConfirm={()=>remove(deleteId)}
+          onBack={()=>setDeleteId(null)}
+        />
+      )}
     </div>
   );
 }
@@ -937,36 +944,27 @@ function App(){
     }
 
     // ── User Menu ─────────────────────────────────────────────────
-    function ConfirmSheet({ title, confirmLabel, confirmStyle, onConfirm, onBack, deleting }) {
+    function ConfirmDialog({ title, description, confirmLabel, confirmStyle, onConfirm, onBack, deleting }) {
       return (
-        <div style={{position:"fixed",inset:0,zIndex:600,display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
-          <div onClick={onBack} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.0)"}}/>
-          <div style={{position:"relative",background:"#101010",borderRadius:"20px 20px 0 0",
-            border:"1px solid #1E1E1E",borderBottom:"none",paddingBottom:48}}>
-            <div style={{display:"flex",justifyContent:"center",padding:"14px 0 0"}}>
-              <div style={{width:36,height:4,borderRadius:2,background:"#2A2A2A"}}/>
-            </div>
-            <div style={{padding:"16px 28px 20px",borderBottom:"1px solid #1A1A1A",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <Lbl style={{color:T.textMid}}>{title}</Lbl>
-              <button onClick={onBack} style={{background:"none",border:"none",color:"#3A3A3A",cursor:"pointer",padding:4}}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-              </button>
-            </div>
-            <div style={{padding:"24px 28px",display:"flex",gap:8}}>
-              <button onClick={onBack} style={{flex:1,padding:"12px",borderRadius:8,background:"#161616",border:"1px solid #1E1E1E",color:"#888",cursor:"pointer",fontFamily:"inherit",fontSize:10,letterSpacing:2,textTransform:"uppercase"}}>Cancel</button>
-              <button onClick={onConfirm} disabled={deleting} style={{flex:1,padding:"12px",borderRadius:8,...confirmStyle,cursor:deleting?"not-allowed":"pointer",fontFamily:"inherit",fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase"}}>{deleting?"Deleting...":confirmLabel}</button>
+        <div style={{position:"fixed",inset:0,zIndex:600,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 32px"}}>
+          <div onClick={onBack} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)"}}/>
+          <div style={{position:"relative",background:"#141414",borderRadius:16,border:"1px solid #2A2A2A",padding:"28px 24px 24px",width:"100%",maxWidth:340}}>
+            <div style={{fontSize:12,letterSpacing:3,textTransform:"uppercase",color:"#F2F2F2",fontWeight:600,marginBottom:description?12:24}}>{title}</div>
+            {description && (
+              <div style={{fontSize:12,fontWeight:500,letterSpacing:"2.5px",color:"#666666",fontFamily:"'Aptos','Calibri','Segoe UI',system-ui,sans-serif",lineHeight:1.9,marginBottom:24}}>{description}</div>
+            )}
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={onBack} style={{flex:1,padding:"13px",borderRadius:8,background:"#161616",border:"1px solid #1E1E1E",color:"#888",cursor:"pointer",fontFamily:"inherit",fontSize:11,letterSpacing:2,textTransform:"uppercase"}}>Cancel</button>
+              <button onClick={onConfirm} disabled={deleting} style={{flex:1,padding:"13px",borderRadius:8,...confirmStyle,cursor:deleting?"not-allowed":"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:2,textTransform:"uppercase"}}>{deleting?"Deleting...":confirmLabel}</button>
             </div>
           </div>
         </div>
       );
     }
 
-    function UserMenu({ user, profile, onClose, onSignOut, onDeleteAccount, habits, setHabits, onClearAll, currentDateKey, data, setData }) {
-      const [subSheet, setSubSheet] = useState(null); // "clearDay" | "clearAll" | "delete"
+    function UserMenu({ user, profile, onClose, onSignOut, onDeleteAccount, habits, setHabits, onClearAll, currentDateKey, data, setData, onManageHabits }) {
+      const [subSheet, setSubSheet] = useState(null);
       const [deleting, setDeleting] = useState(false);
-      const [managing, setManaging] = useState(false);
 
       const dt = new Date((currentDateKey||todayKey())+"T12:00:00");
 
@@ -1047,7 +1045,7 @@ function App(){
             </div>
 
             <div style={{padding:"8px 0 0"}}>
-              {menuBtn(()=>setManaging(true),
+              {menuBtn(()=>{onClose();onManageHabits();},
                 <><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></>,
                 "Manage Habits")}
               <Sep/>
@@ -1059,7 +1057,7 @@ function App(){
                 <><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.95"/></>,
                 "Clear All Data")}
               <Sep/>
-              {menuBtn(onSignOut,
+              {menuBtn(()=>setSubSheet("logout"),
                 <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></>,
                 "Logout")}
               <Sep/>
@@ -1069,28 +1067,38 @@ function App(){
             </div>
           </div>
 
-          {managing && <ManageSheet habits={habits} setHabits={setHabits} onClose={()=>setManaging(false)} onClearAll={onClearAll}/>}
-
-          {subSheet==="clearDay" && <ConfirmSheet
-            title={`Clear ${dt.getDate()} ${MONTHS[dt.getMonth()]} ${dt.getFullYear()}`}
+          {subSheet==="clearDay" && <ConfirmDialog
+            title={`Clear ${dt.getDate()} ${MONTHS[dt.getMonth()].slice(0,3).toUpperCase()} ${dt.getFullYear()}`}
+            description={`Are you sure you want to clear today's logged data?`}
             confirmLabel="Clear"
             confirmStyle={{background:T.text,border:`1px solid ${T.text}`,color:T.bg}}
             onConfirm={handleClearDay}
             onBack={()=>setSubSheet(null)}
           />}
 
-          {subSheet==="clearAll" && <ConfirmSheet
+          {subSheet==="clearAll" && <ConfirmDialog
             title="Clear All Tracked Data"
+            description="Are you sure you want to clear all tracked data?"
             confirmLabel="Clear All"
-            confirmStyle={{background:"#1A0707",border:"1px solid #CC4444",color:"#CC4444"}}
+            confirmStyle={{background:T.text,border:`1px solid ${T.text}`,color:T.bg}}
             onConfirm={handleClearAll}
             onBack={()=>setSubSheet(null)}
           />}
 
-          {subSheet==="delete" && <ConfirmSheet
+          {subSheet==="logout" && <ConfirmDialog
+            title="Logout"
+            description="Are you sure you want to logout?"
+            confirmLabel="Logout"
+            confirmStyle={{background:"#F2F2F2",border:"1px solid #F2F2F2",color:"#080808"}}
+            onConfirm={onSignOut}
+            onBack={()=>setSubSheet(null)}
+          />}
+
+          {subSheet==="delete" && <ConfirmDialog
             title="Delete Account"
+            description="Are you sure you want to permanently delete your account?"
             confirmLabel="Delete"
-            confirmStyle={{background:"#1A0707",border:"1px solid #CC4444",color:"#CC4444"}}
+            confirmStyle={{background:"#CC2222",border:"1px solid #CC2222",color:"#F2F2F2"}}
             onConfirm={handleDelete}
             onBack={()=>setSubSheet(null)}
             deleting={deleting}
@@ -1108,6 +1116,7 @@ function App(){
       const [data,      setData]      = useState({});
       const [habits,    setHabits]    = useState(DEFAULT_HABITS);
       const [menuOpen,  setMenuOpen]  = useState(false);
+      const [managingHabits, setManagingHabits] = useState(false);
       const [currentDateKey, setCurrentDateKey] = useState(todayKey());
 
       useEffect(() => {
@@ -1164,11 +1173,16 @@ function App(){
 
       return (
         <div style={{fontFamily:"'Aptos','Aptos Display','Calibri','Segoe UI',system-ui,sans-serif",background:"#080808",color:"#F2F2F2",minHeight:"100vh",maxWidth:430,margin:"0 auto",overflowX:"hidden"}}>
-          {tab==="today" && <TodayScreen data={data} setData={handleSet} habits={habits} setHabits={setHabits} onClearAll={clearAll} user={user} onMenuOpen={()=>setMenuOpen(true)} currentDateKey={currentDateKey} setCurrentDateKey={setCurrentDateKey}/>}
-          {tab==="month" && <MonthScreen data={data} habits={habits}/>}
-          {tab==="stats" && <StatsScreen data={data} habits={habits}/>}
-          <Nav tab={tab} setTab={setTab}/>
-          {menuOpen && <UserMenu user={user} profile={profile} onClose={()=>setMenuOpen(false)} onSignOut={handleSignOut} onDeleteAccount={()=>{ setUID(null); setUser(null); setMenuOpen(false); setData({}); setHabits(DEFAULT_HABITS); }} habits={habits} setHabits={setHabits} onClearAll={clearAll} currentDateKey={currentDateKey} data={data} setData={handleSet}/>}
+          {managingHabits
+            ? <ManageHabitsPage habits={habits} setHabits={setHabits} onClose={()=>setManagingHabits(false)} onClearAll={clearAll}/>
+            : <>
+                {tab==="today" && <TodayScreen data={data} setData={handleSet} habits={habits} setHabits={setHabits} onClearAll={clearAll} user={user} onMenuOpen={()=>setMenuOpen(true)} currentDateKey={currentDateKey} setCurrentDateKey={setCurrentDateKey}/>}
+                {tab==="month" && <MonthScreen data={data} habits={habits}/>}
+                {tab==="stats" && <StatsScreen data={data} habits={habits}/>}
+                <Nav tab={tab} setTab={setTab}/>
+              </>
+          }
+          {menuOpen && <UserMenu user={user} profile={profile} onClose={()=>setMenuOpen(false)} onSignOut={handleSignOut} onDeleteAccount={()=>{ setUID(null); setUser(null); setMenuOpen(false); setData({}); setHabits(DEFAULT_HABITS); }} habits={habits} setHabits={setHabits} onClearAll={clearAll} currentDateKey={currentDateKey} data={data} setData={handleSet} onManageHabits={()=>setManagingHabits(true)}/>}
         </div>
       );
     }
