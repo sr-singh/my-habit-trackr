@@ -1225,6 +1225,8 @@ function App(){
             if (h && h.length) setHabits(h);
 
             if (!p) {
+              setData({});
+              setHabits(DEFAULT_HABITS);
               setUser(u);
               setNeedsOnboard(true);
             } else {
@@ -1261,7 +1263,7 @@ function App(){
 
       if (user === undefined) return null;
       if (!user) return <LoginScreen />;
-      if (needsOnboard) return <OnboardingScreen user={user} onComplete={function(p){ setProfile(p); setNeedsOnboard(false); }}/>;
+      if (needsOnboard) return <OnboardingScreen user={user} onComplete={function(p){ setData({}); setHabits(DEFAULT_HABITS); setProfile(p); setNeedsOnboard(false); }}/>;
 
       return (
         <div style={{fontFamily:"'Aptos','Aptos Display','Calibri','Segoe UI',system-ui,sans-serif",background:"#080808",color:"#F2F2F2",minHeight:"100vh",maxWidth:430,margin:"0 auto",overflowX:"hidden"}}>
