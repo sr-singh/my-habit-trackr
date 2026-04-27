@@ -92,6 +92,19 @@
     var _uid = null;
     function setUID(uid) { _uid = uid; }
 
+    // v5 — Habit type logic:
+    // restAllowed:true, streakHabit:false  → Done/Miss/Rest
+    // restAllowed:false, streakHabit:false → Done/Miss
+    // restAllowed:false, streakHabit:true  → Done/Miss/Streak
+    // type:"number"                        → Number
+    const DEFAULT_HABITS = [
+      { id:"habit_1", label:"Gym",         type:"bool",   restAllowed:true,  streakHabit:false, trackChange:false, trackAverage:false, createdAt:null },
+      { id:"habit_2", label:"Water (3L)",  type:"bool",   restAllowed:false, streakHabit:false, trackChange:false, trackAverage:false, createdAt:null },
+      { id:"habit_3", label:"No Fap",      type:"bool",   restAllowed:false, streakHabit:true,  trackChange:false, trackAverage:false, createdAt:null },
+      { id:"habit_4", label:"Sleep (hrs)", type:"number", restAllowed:false, streakHabit:false, trackChange:false, trackAverage:true,  createdAt:null },
+      { id:"habit_5", label:"Weight (kg)", type:"number", restAllowed:false, streakHabit:false, trackChange:true,  trackAverage:false, createdAt:null },
+    ];
+
     async function loadData() {
       if (!_uid) return {};
       try {
@@ -104,16 +117,24 @@
       try { await window._db.collection("users").doc(_uid).collection("data").doc("habitData").set({ value: d }); } catch(e) {}
     }
     async function loadHabits() {
-      if (!_uid) return DEFAULT_HABITS;
+      if (!_uid) { console.log("[loadHabits] no _uid, returning defaults"); return DEFAULT_HABITS; }
       try {
+        console.log("[loadHabits] fetching for uid:", _uid);
         const snap = await window._db.collection("users").doc(_uid).collection("data").doc("habitList").get();
-        if (!snap.exists) return DEFAULT_HABITS;
+        if (!snap.exists) {
+          console.log("[loadHabits] no doc, saving DEFAULT_HABITS now");
+          await window._db.collection("users").doc(_uid).collection("data").doc("habitList").set({ value: DEFAULT_HABITS });
+          console.log("[loadHabits] saved defaults OK");
+          return DEFAULT_HABITS;
+        }
+        console.log("[loadHabits] loaded from Firestore:", snap.data().value);
         return snap.data().value;
-      } catch(e) { return DEFAULT_HABITS; }
+      } catch(e) { console.error("[loadHabits] ERROR:", e); return DEFAULT_HABITS; }
     }
     async function saveHabits(h) {
-      if (!_uid) return;
-      try { await window._db.collection("users").doc(_uid).collection("data").doc("habitList").set({ value: h }); } catch(e) {}
+      if (!_uid) { console.log("[saveHabits] no _uid, skipping"); return; }
+      console.log("[saveHabits] saving", h.length, "habits for uid:", _uid);
+      try { await window._db.collection("users").doc(_uid).collection("data").doc("habitList").set({ value: h }); console.log("[saveHabits] saved OK"); } catch(e) { console.error("[saveHabits] ERROR:", e); }
     }
     async function loadProfile() {
       if (!_uid) return null;
@@ -146,19 +167,7 @@
 
 
 
-// v5 — Habit type logic:
-// restAllowed:true, streakHabit:false  → Done/Miss/Rest
-// restAllowed:false, streakHabit:false → Done/Miss
-// restAllowed:false, streakHabit:true  → Done/Miss/Streak
-// type:"number"                        → Number
 
-const DEFAULT_HABITS = [
-  { id:"habit_1", label:"Gym",         type:"bool",   restAllowed:true,  streakHabit:false, trackChange:false, trackAverage:false, createdAt:null },
-  { id:"habit_2", label:"Water (3L)",  type:"bool",   restAllowed:false, streakHabit:false, trackChange:false, trackAverage:false, createdAt:null },
-  { id:"habit_3", label:"No Fap",      type:"bool",   restAllowed:false, streakHabit:true,  trackChange:false, trackAverage:false, createdAt:null },
-  { id:"habit_4", label:"Sleep (hrs)", type:"number", restAllowed:false, streakHabit:false, trackChange:false, trackAverage:true,  createdAt:null },
-  { id:"habit_5", label:"Weight (kg)", type:"number", restAllowed:false, streakHabit:false, trackChange:true,  trackAverage:false, createdAt:null },
-];
 
 const DAYS   = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
