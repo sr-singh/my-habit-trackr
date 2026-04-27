@@ -103,11 +103,29 @@
       if (!_uid) return;
       try { await window._db.collection("users").doc(_uid).collection("data").doc("habitData").set({ value: d }); } catch(e) {}
     }
+    function toSlug(label){ return label.trim().toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,""); }
+    function normalizeHabit(h){
+      return {
+        id:           h.label ? toSlug(h.label) : (h.id || ""),
+        label:        h.label        || "",
+        type:         h.type         || "bool",
+        restAllowed:  h.restAllowed  !== undefined ? h.restAllowed  : false,
+        streakHabit:  h.streakHabit  !== undefined ? h.streakHabit  : false,
+        trackChange:  h.trackChange  !== undefined ? h.trackChange  : false,
+        trackAverage: h.trackAverage !== undefined ? h.trackAverage : false,
+        createdAt:    h.createdAt    !== undefined ? h.createdAt    : null,
+      };
+    }
     async function loadHabits() {
       if (!_uid) return DEFAULT_HABITS;
       try {
         const snap = await window._db.collection("users").doc(_uid).collection("data").doc("habitList").get();
-        return snap.exists ? snap.data().value : DEFAULT_HABITS;
+        if (!snap.exists) return DEFAULT_HABITS;
+        const raw = snap.data().value || DEFAULT_HABITS;
+        const normalized = raw.map(normalizeHabit);
+        const dirty = raw.some((h,i) => JSON.stringify(h) !== JSON.stringify(normalized[i]));
+        if (dirty) saveHabits(normalized);
+        return normalized;
       } catch(e) { return DEFAULT_HABITS; }
     }
     async function saveHabits(h) {
@@ -357,14 +375,13 @@ function ManageHabitsPage({habits,setHabits,onClose,onClearAll,data,setData}){
   const [deleteId,setDeleteId]=useState(null);
 
   function add(fields){
-    const labelId=fields.label.trim().toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"");
-    const h={id:labelId,...fields,createdAt:todayKey()};
+    const h={id:toSlug(fields.label),...fields,createdAt:todayKey()};
     const next=[...habits,h]; setHabits(next); saveHabits(next);
   }
 
   function save(oldId,fields){
     // ID always matches the label slug
-    const newId = fields.label.trim().toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"");
+    const newId = toSlug(fields.label);
     const idChanged = newId !== oldId;
 
     // Migrate historical data if id changed
