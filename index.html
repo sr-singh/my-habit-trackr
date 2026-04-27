@@ -363,13 +363,9 @@ function ManageHabitsPage({habits,setHabits,onClose,onClearAll,data,setData}){
   }
 
   function save(oldId,fields){
-    // For default habits (ids like "gym","weight","sleep"), generate new id from new label
-    // For user-created habits (ids like "h_1234567890_..."), keep id stable
-    const isDefaultId = !oldId.startsWith("h_");
-    const newId = isDefaultId
-      ? fields.label.trim().toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"")
-      : oldId;
-    const idChanged = isDefaultId && newId !== oldId;
+    // Keep the same id always — label changes don't affect id
+    const newId = oldId;
+    const idChanged = false;
 
     // Migrate historical data if id changed
     if(idChanged && data){
