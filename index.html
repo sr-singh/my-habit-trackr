@@ -848,7 +848,7 @@ function App(){
       async function handleSave() {
         setSaving(true);
         const profile = { name: name.trim(), goals: goals, email: user.email, createdAt: new Date().toISOString() };
-        await saveProfile(profile);
+        await Promise.all([saveProfile(profile), saveHabits(DEFAULT_HABITS)]);
         onComplete(profile);
       }
 
@@ -1264,7 +1264,7 @@ function App(){
 
       if (user === undefined) return null;
       if (!user) return <LoginScreen />;
-      if (needsOnboard) return <OnboardingScreen user={user} onComplete={function(p){ setData({}); setHabits(DEFAULT_HABITS); setProfile(p); setNeedsOnboard(false); }}/>;
+      if (needsOnboard) return <OnboardingScreen user={user} onComplete={function(p){ setData({}); setHabits(DEFAULT_HABITS); saveHabits(DEFAULT_HABITS); setProfile(p); setNeedsOnboard(false); }}/>;
 
       return (
         <div style={{fontFamily:"'Aptos','Aptos Display','Calibri','Segoe UI',system-ui,sans-serif",background:"#080808",color:"#F2F2F2",minHeight:"100vh",maxWidth:430,margin:"0 auto",overflowX:"hidden"}}>
