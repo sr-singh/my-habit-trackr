@@ -152,9 +152,9 @@
 // type:"number"                        → Number
 
 const DEFAULT_HABITS = [
-  { id:"gym",    label:"Gym",          type:"bool",   restAllowed:true,  streakHabit:false, createdAt:null },
-  { id:"water",  label:"Water (3L)",   type:"bool",   restAllowed:false, streakHabit:false, createdAt:null },
-  { id:"nofap",  label:"No Fap",       type:"bool",   restAllowed:false, streakHabit:true,  createdAt:null },
+  { id:"gym",    label:"Gym",          type:"bool",   restAllowed:true,  streakHabit:false, trackChange:false, trackAverage:false, createdAt:null },
+  { id:"water",  label:"Water (3L)",   type:"bool",   restAllowed:false, streakHabit:false, trackChange:false, trackAverage:false, createdAt:null },
+  { id:"nofap",  label:"No Fap",       type:"bool",   restAllowed:false, streakHabit:true,  trackChange:false, trackAverage:false, createdAt:null },
   { id:"sleep",  label:"Sleep (hrs)",  type:"number", restAllowed:false, streakHabit:false, trackChange:false, trackAverage:true,  createdAt:null },
   { id:"weight", label:"Weight (kg)",  type:"number", restAllowed:false, streakHabit:false, trackChange:true,  trackAverage:false, createdAt:null },
 ];
@@ -357,7 +357,8 @@ function ManageHabitsPage({habits,setHabits,onClose,onClearAll,data,setData}){
   const [deleteId,setDeleteId]=useState(null);
 
   function add(fields){
-    const h={id:"h_"+Date.now(),...fields,createdAt:todayKey()};
+    const labelId=fields.label.trim().toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"");
+    const h={id:labelId,...fields,createdAt:todayKey()};
     const next=[...habits,h]; setHabits(next); saveHabits(next);
   }
 
