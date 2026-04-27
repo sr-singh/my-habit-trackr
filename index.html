@@ -103,29 +103,12 @@
       if (!_uid) return;
       try { await window._db.collection("users").doc(_uid).collection("data").doc("habitData").set({ value: d }); } catch(e) {}
     }
-    function toSlug(label){ return label.trim().toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,""); }
-    function normalizeHabit(h){
-      return {
-        id:           h.label ? toSlug(h.label) : (h.id || ""),
-        label:        h.label        || "",
-        type:         h.type         || "bool",
-        restAllowed:  h.restAllowed  !== undefined ? h.restAllowed  : false,
-        streakHabit:  h.streakHabit  !== undefined ? h.streakHabit  : false,
-        trackChange:  h.trackChange  !== undefined ? h.trackChange  : false,
-        trackAverage: h.trackAverage !== undefined ? h.trackAverage : false,
-        createdAt:    h.createdAt    !== undefined ? h.createdAt    : null,
-      };
-    }
     async function loadHabits() {
       if (!_uid) return DEFAULT_HABITS;
       try {
         const snap = await window._db.collection("users").doc(_uid).collection("data").doc("habitList").get();
         if (!snap.exists) return DEFAULT_HABITS;
-        const raw = snap.data().value || DEFAULT_HABITS;
-        const normalized = raw.map(normalizeHabit);
-        const dirty = raw.some((h,i) => JSON.stringify(h) !== JSON.stringify(normalized[i]));
-        if (dirty) saveHabits(normalized);
-        return normalized;
+        return snap.data().value;
       } catch(e) { return DEFAULT_HABITS; }
     }
     async function saveHabits(h) {
@@ -170,11 +153,11 @@
 // type:"number"                        → Number
 
 const DEFAULT_HABITS = [
-  { id:"gym",    label:"Gym",          type:"bool",   restAllowed:true,  streakHabit:false, trackChange:false, trackAverage:false, createdAt:null },
-  { id:"water",  label:"Water (3L)",   type:"bool",   restAllowed:false, streakHabit:false, trackChange:false, trackAverage:false, createdAt:null },
-  { id:"nofap",  label:"No Fap",       type:"bool",   restAllowed:false, streakHabit:true,  trackChange:false, trackAverage:false, createdAt:null },
-  { id:"sleep",  label:"Sleep (hrs)",  type:"number", restAllowed:false, streakHabit:false, trackChange:false, trackAverage:true,  createdAt:null },
-  { id:"weight", label:"Weight (kg)",  type:"number", restAllowed:false, streakHabit:false, trackChange:true,  trackAverage:false, createdAt:null },
+  { id:"habit_1", label:"Gym",         type:"bool",   restAllowed:true,  streakHabit:false, trackChange:false, trackAverage:false, createdAt:null },
+  { id:"habit_2", label:"Water (3L)",  type:"bool",   restAllowed:false, streakHabit:false, trackChange:false, trackAverage:false, createdAt:null },
+  { id:"habit_3", label:"No Fap",      type:"bool",   restAllowed:false, streakHabit:true,  trackChange:false, trackAverage:false, createdAt:null },
+  { id:"habit_4", label:"Sleep (hrs)", type:"number", restAllowed:false, streakHabit:false, trackChange:false, trackAverage:true,  createdAt:null },
+  { id:"habit_5", label:"Weight (kg)", type:"number", restAllowed:false, streakHabit:false, trackChange:true,  trackAverage:false, createdAt:null },
 ];
 
 const DAYS   = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
@@ -375,32 +358,15 @@ function ManageHabitsPage({habits,setHabits,onClose,onClearAll,data,setData}){
   const [deleteId,setDeleteId]=useState(null);
 
   function add(fields){
-    const h={id:toSlug(fields.label),...fields,createdAt:todayKey()};
+    const maxN=habits.reduce((m,h)=>{const match=h.id.match(/^habit_(\d+)$/);return match?Math.max(m,parseInt(match[1])):m;},0);
+    const id="habit_"+(maxN+1);
+    const h={id,...fields,trackChange:fields.trackChange||false,trackAverage:fields.trackAverage||false,restAllowed:fields.restAllowed||false,streakHabit:fields.streakHabit||false,createdAt:todayKey()};
     const next=[...habits,h]; setHabits(next); saveHabits(next);
   }
 
   function save(oldId,fields){
-    // ID always matches the label slug
-    const newId = toSlug(fields.label);
-    const idChanged = newId !== oldId;
-
-    // Migrate historical data if id changed
-    if(idChanged && data){
-      const newData = {};
-      Object.keys(data).forEach(dateKey=>{
-        const dayEntry = data[dateKey];
-        if(dayEntry && dayEntry[oldId] !== undefined){
-          const migrated = {...dayEntry, [newId]: dayEntry[oldId]};
-          delete migrated[oldId];
-          newData[dateKey] = migrated;
-        } else {
-          newData[dateKey] = dayEntry;
-        }
-      });
-      setData(newData);
-    }
-
-    const next=habits.map(h=>h.id===oldId?{...h,...fields,id:newId}:h);
+    // ID never changes — only label and other fields update
+    const next=habits.map(h=>h.id===oldId?{...h,...fields}:h);
     setHabits(next); saveHabits(next); setEditId(null);
   }
 
@@ -861,7 +827,7 @@ function App(){
       async function handleSave() {
         setSaving(true);
         const profile = { name: name.trim(), goals: goals, email: user.email, createdAt: new Date().toISOString() };
-        await Promise.all([saveProfile(profile), saveHabits(DEFAULT_HABITS)]);
+        await saveProfile(profile);
         onComplete(profile);
       }
 
@@ -1241,7 +1207,6 @@ function App(){
             if (!p) {
               setData({});
               setHabits(DEFAULT_HABITS);
-              saveHabits(DEFAULT_HABITS);
               setUser(u);
               setNeedsOnboard(true);
             } else {
