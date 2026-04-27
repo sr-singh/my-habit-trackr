@@ -152,8 +152,8 @@ const DEFAULT_HABITS = [
   { id:"gym",    label:"Gym",          type:"bool",   restAllowed:true,  streakHabit:false, createdAt:null },
   { id:"water",  label:"Water (3L)",   type:"bool",   restAllowed:false, streakHabit:false, createdAt:null },
   { id:"nofap",  label:"No Fap",       type:"bool",   restAllowed:false, streakHabit:true,  createdAt:null },
-  { id:"sleep",  label:"Sleep (hrs)",  type:"number", restAllowed:false, streakHabit:false, createdAt:null },
-  { id:"weight", label:"Weight (kg)",  type:"number", restAllowed:false, streakHabit:false, numberSubtype:"change", createdAt:null },
+  { id:"sleep",  label:"Sleep (hrs)",  type:"number", restAllowed:false, streakHabit:false, trackChange:false, trackAverage:true,  createdAt:null },
+  { id:"weight", label:"Weight (kg)",  type:"number", restAllowed:false, streakHabit:false, trackChange:true,  trackAverage:false, createdAt:null },
 ];
 
 const DAYS   = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
@@ -213,18 +213,19 @@ function IBtn({icon,onClick,size=34,is=16,active=false}){
 // Today: rest → bool → number(change-tracker last)
 function sortToday(habits){
   return [...habits].sort((a,b)=>{
-    const rank=h=>h.type==="number"?(h.numberSubtype==="change"?4:3):h.restAllowed?0:1;
+    const rank=h=>h.type==="number"?(h.trackChange?4:3):h.restAllowed?0:1;
     return rank(a)-rank(b);
   });
 }
-// Stats weekly/monthly: change-tracker → other numbers → rest bool → plain bool
+// Stats weekly/monthly: change → average → rest bool → plain number → plain bool
 function sortStats(habits){
   return [...habits].sort((a,b)=>{
     const rank=h=>{
-      if(h.type==="number"&&h.numberSubtype==="change") return 0;
-      if(h.type==="number") return 1;
+      if(h.type==="number"&&h.trackChange) return 0;
+      if(h.type==="number"&&h.trackAverage) return 1;
       if(h.type==="bool"&&h.restAllowed) return 2;
-      return 3;
+      if(h.type==="number") return 3;
+      return 4;
     };
     return rank(a)-rank(b);
   });
@@ -242,7 +243,8 @@ const SUBTYPES=[
   {key:"change", label:"Change Tracker",        restAllowed:false, streakHabit:false},
 ];
 function subtypeOf(h){
-  if(h.type==="number"&&h.numberSubtype==="change") return "change";
+  if(h.type==="number"&&h.trackChange) return "change";
+  if(h.type==="number"&&h.trackAverage) return "average";
   if(h.type==="number") return "number";
   if(h.restAllowed) return "rest";
   if(h.streakHabit) return "streak";
@@ -255,7 +257,7 @@ function HabitForm({initial,onSave,onCancel,saveLabel}){
   const [type,setType]=useState((initial && initial.type)||"bool");
   const [rest,setRest]=useState((initial && initial.restAllowed)||false);
   const [streak,setStreak]=useState((initial && initial.streakHabit)||false);
-  const [numSub,setNumSub]=useState((initial && initial.numberSubtype)||"number");
+  const [numSub,setNumSub]=useState(initial?(initial.trackChange?"change":initial.trackAverage?"average":"number"):"number");
   const ref=useRef();
 
   // mutual exclusion
@@ -264,7 +266,7 @@ function HabitForm({initial,onSave,onCancel,saveLabel}){
 
   function submit(){
     const l=label.trim(); if(!l) return;
-    onSave({label:l,type,restAllowed:type==="bool"?rest:false,streakHabit:type==="bool"?streak:false,numberSubtype:type==="number"?numSub:"number"});
+    onSave({label:l,type,restAllowed:type==="bool"?rest:false,streakHabit:type==="bool"?streak:false,trackChange:type==="number"?numSub==="change":false,trackAverage:type==="number"?numSub==="average":false});
   }
 
   return(
@@ -424,7 +426,7 @@ function ManageHabitsPage({habits,setHabits,onClose,onClearAll,data,setData}){
                       <span style={{fontSize:11,letterSpacing:3,textTransform:"uppercase",color:T.text,fontWeight:500}}>{h.label}</span>
                       <Lbl style={{color:T.textLow}}>{h.createdAt||todayKey()}</Lbl>
                     </div>
-                    <Lbl style={{marginTop:5,display:"block"}}>{h.type==="number"?(h.numberSubtype==="change"?"Number / Change":h.numberSubtype==="average"?"Number / Average":"Number"):h.restAllowed?"Done / Miss / Rest":h.streakHabit?"Done / Miss / Streak":"Done / Miss"}</Lbl>
+                    <Lbl style={{marginTop:5,display:"block"}}>{h.type==="number"?(h.trackChange?"Number / Change":h.trackAverage?"Number / Average":"Number"):h.restAllowed?"Done / Miss / Rest":h.streakHabit?"Done / Miss / Streak":"Done / Miss"}</Lbl>
                   </div>
                   <div style={{display:"flex",gap:6,flexShrink:0}}>
                     <IBtn icon="edit" onClick={()=>setEditId(h.id)} size={34} is={14}/>
@@ -653,7 +655,7 @@ function PeriodHabits({habits,data,keys}){
         const isLast=i===sorted.length-1;
         const border=isLast?"none":`1px solid ${T.border}`;
 
-        if(h.type==="number"&&h.numberSubtype==="change"){
+        if(h.type==="number"&&h.trackChange){
           const vals=numVals(h.id);
           const first=vals[0],last=vals[vals.length-1];
           const avg=vals.length?(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1):null;
