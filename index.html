@@ -282,14 +282,14 @@ function HabitForm({initial,onSave,onCancel,saveLabel}){
       {type==="number"&&(
         <>
           <button onClick={()=>setNumSub(numSub==="change"?"number":"change")}
-            style={{padding:"10px 14px",background:numSub==="change"?T.surfaceHi:T.surface,border:`1px solid ${numSub==="change"?T.borderHi:T.border}`,borderRadius:8,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            style={{padding:"10px 14px",background:numSub==="change"?T.surfaceHi:T.surface,border:`1px solid ${numSub==="change"?T.borderHi:T.border}`,borderRadius:8,cursor:numSub==="average"?"not-allowed":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"space-between",opacity:numSub==="average"?0.35:1}}>
             <Lbl>Track change</Lbl>
             <div style={{width:32,height:18,borderRadius:9,background:numSub==="change"?T.text:T.border,position:"relative",transition:"background 0.2s"}}>
               <div style={{position:"absolute",top:3,left:numSub==="change"?16:3,width:12,height:12,borderRadius:"50%",background:numSub==="change"?T.bg:T.textLow,transition:"left 0.2s"}}/>
             </div>
           </button>
           <button onClick={()=>setNumSub(numSub==="average"?"number":"average")}
-            style={{padding:"10px 14px",background:numSub==="average"?T.surfaceHi:T.surface,border:`1px solid ${numSub==="average"?T.borderHi:T.border}`,borderRadius:8,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            style={{padding:"10px 14px",background:numSub==="average"?T.surfaceHi:T.surface,border:`1px solid ${numSub==="average"?T.borderHi:T.border}`,borderRadius:8,cursor:numSub==="change"?"not-allowed":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"space-between",opacity:numSub==="change"?0.35:1}}>
             <Lbl>Track average</Lbl>
             <div style={{width:32,height:18,borderRadius:9,background:numSub==="average"?T.text:T.border,position:"relative",transition:"background 0.2s"}}>
               <div style={{position:"absolute",top:3,left:numSub==="average"?16:3,width:12,height:12,borderRadius:"50%",background:numSub==="average"?T.bg:T.textLow,transition:"left 0.2s"}}/>
@@ -424,7 +424,7 @@ function ManageHabitsPage({habits,setHabits,onClose,onClearAll,data,setData}){
                       <span style={{fontSize:11,letterSpacing:3,textTransform:"uppercase",color:T.text,fontWeight:500}}>{h.label}</span>
                       <Lbl style={{color:T.textLow}}>{h.createdAt||todayKey()}</Lbl>
                     </div>
-                    <Lbl style={{marginTop:5,display:"block"}}>{h.type==="number"?(h.numberSubtype==="change"?"Number · Track change":h.numberSubtype==="average"?"Number · Track average":"Number"):h.restAllowed?"Done / Miss / Rest":h.streakHabit?"Done / Miss / Streak":"Done / Miss"}</Lbl>
+                    <Lbl style={{marginTop:5,display:"block"}}>{h.type==="number"?(h.numberSubtype==="change"?"Number / Change":h.numberSubtype==="average"?"Number / Average":"Number"):h.restAllowed?"Done / Miss / Rest":h.streakHabit?"Done / Miss / Streak":"Done / Miss"}</Lbl>
                   </div>
                   <div style={{display:"flex",gap:6,flexShrink:0}}>
                     <IBtn icon="edit" onClick={()=>setEditId(h.id)} size={34} is={14}/>
