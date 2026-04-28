@@ -117,24 +117,15 @@
       try { await window._db.collection("users").doc(_uid).collection("data").doc("habitData").set({ value: d }); } catch(e) {}
     }
     async function loadHabits() {
-      if (!_uid) { console.log("[loadHabits] no _uid, returning defaults"); return DEFAULT_HABITS; }
+      if (!_uid) return DEFAULT_HABITS;
       try {
-        console.log("[loadHabits] fetching for uid:", _uid);
         const snap = await window._db.collection("users").doc(_uid).collection("data").doc("habitList").get();
-        if (!snap.exists) {
-          console.log("[loadHabits] no doc, saving DEFAULT_HABITS now");
-          await window._db.collection("users").doc(_uid).collection("data").doc("habitList").set({ value: DEFAULT_HABITS });
-          console.log("[loadHabits] saved defaults OK");
-          return DEFAULT_HABITS;
-        }
-        console.log("[loadHabits] loaded from Firestore:", snap.data().value);
-        return snap.data().value;
-      } catch(e) { console.error("[loadHabits] ERROR:", e); return DEFAULT_HABITS; }
+        return snap.exists ? snap.data().value : DEFAULT_HABITS;
+      } catch(e) { return DEFAULT_HABITS; }
     }
     async function saveHabits(h) {
-      if (!_uid) { console.log("[saveHabits] no _uid, skipping"); return; }
-      console.log("[saveHabits] saving", h.length, "habits for uid:", _uid);
-      try { await window._db.collection("users").doc(_uid).collection("data").doc("habitList").set({ value: h }); console.log("[saveHabits] saved OK"); } catch(e) { console.error("[saveHabits] ERROR:", e); }
+      if (!_uid) return;
+      try { await window._db.collection("users").doc(_uid).collection("data").doc("habitList").set({ value: h }); } catch(e) {}
     }
     async function loadProfile() {
       if (!_uid) return null;
@@ -370,16 +361,16 @@ function ManageHabitsPage({habits,setHabits,onClose,onClearAll,data,setData}){
     const maxN=habits.reduce((m,h)=>{const match=h.id.match(/^habit_(\d+)$/);return match?Math.max(m,parseInt(match[1])):m;},0);
     const id="habit_"+(maxN+1);
     const h={id,...fields,trackChange:fields.trackChange||false,trackAverage:fields.trackAverage||false,restAllowed:fields.restAllowed||false,streakHabit:fields.streakHabit||false,createdAt:todayKey()};
-    const next=[...habits,h]; setHabits(next); saveHabits(next);
+    const next=[...habits,h]; setHabits(next);
   }
 
   function save(oldId,fields){
     // ID never changes — only label and other fields update
     const next=habits.map(h=>h.id===oldId?{...h,...fields}:h);
-    setHabits(next); saveHabits(next); setEditId(null);
+    setHabits(next); setEditId(null);
   }
 
-  function remove(id){const next=habits.filter(h=>h.id!==id);setHabits(next);saveHabits(next);setDeleteId(null);}
+  function remove(id){const next=habits.filter(h=>h.id!==id);setHabits(next);setDeleteId(null);}
 
   const deleteHabit=habits.find(h=>h.id===deleteId);
 
@@ -1216,6 +1207,7 @@ function App(){
             if (!p) {
               setData({});
               setHabits(DEFAULT_HABITS);
+              await saveHabits(DEFAULT_HABITS);
               setUser(u);
               setNeedsOnboard(true);
             } else {
@@ -1240,6 +1232,11 @@ function App(){
         });
       }, []);
 
+      const handleSetHabits = useCallback(function(next) {
+        setHabits(next);
+        saveHabits(next);
+      }, []);
+
       async function clearAll() {
         setData({});
         await saveData({});
@@ -1252,20 +1249,20 @@ function App(){
 
       if (user === undefined) return null;
       if (!user) return <LoginScreen />;
-      if (needsOnboard) return <OnboardingScreen user={user} onComplete={function(p){ setData({}); setHabits(DEFAULT_HABITS); saveHabits(DEFAULT_HABITS); setProfile(p); setNeedsOnboard(false); }}/>;
+      if (needsOnboard) return <OnboardingScreen user={user} onComplete={function(p){ setData({}); handleSetHabits(DEFAULT_HABITS); setProfile(p); setNeedsOnboard(false); }}/>;
 
       return (
         <div style={{fontFamily:"'Aptos','Aptos Display','Calibri','Segoe UI',system-ui,sans-serif",background:"#080808",color:"#F2F2F2",minHeight:"100vh",maxWidth:430,margin:"0 auto",overflowX:"hidden"}}>
           {managingHabits
-            ? <ManageHabitsPage habits={habits} setHabits={setHabits} onClose={()=>setManagingHabits(false)} onClearAll={clearAll} data={data} setData={handleSet}/>
+            ? <ManageHabitsPage habits={habits} setHabits={handleSetHabits} onClose={()=>setManagingHabits(false)} onClearAll={clearAll} data={data} setData={handleSet}/>
             : <>
-                {tab==="today" && <TodayScreen data={data} setData={handleSet} habits={habits} setHabits={setHabits} onClearAll={clearAll} user={user} onMenuOpen={()=>setMenuOpen(true)} currentDateKey={currentDateKey} setCurrentDateKey={setCurrentDateKey}/>}
+                {tab==="today" && <TodayScreen data={data} setData={handleSet} habits={habits} setHabits={handleSetHabits} onClearAll={clearAll} user={user} onMenuOpen={()=>setMenuOpen(true)} currentDateKey={currentDateKey} setCurrentDateKey={setCurrentDateKey}/>}
                 {tab==="month" && <MonthScreen key={monthKey} data={data} habits={habits}/>}
                 {tab==="stats" && <StatsScreen data={data} habits={habits}/>}
                 <Nav tab={tab} setTab={id=>{setTab(id);if(id==="today")setCurrentDateKey(todayKey());if(id==="month")setMonthKey(k=>k+1);}}/>
               </>
           }
-          {menuOpen && <UserMenu user={user} profile={profile} onClose={()=>setMenuOpen(false)} onSignOut={handleSignOut} onDeleteAccount={()=>{ setUID(null); setUser(null); setMenuOpen(false); setData({}); setHabits(DEFAULT_HABITS); }} habits={habits} setHabits={setHabits} onClearAll={clearAll} currentDateKey={currentDateKey} data={data} setData={handleSet} onManageHabits={()=>setManagingHabits(true)}/>}
+          {menuOpen && <UserMenu user={user} profile={profile} onClose={()=>setMenuOpen(false)} onSignOut={handleSignOut} onDeleteAccount={()=>{ setUID(null); setUser(null); setMenuOpen(false); setData({}); setHabits(DEFAULT_HABITS); }} habits={habits} setHabits={handleSetHabits} onClearAll={clearAll} currentDateKey={currentDateKey} data={data} setData={handleSet} onManageHabits={()=>setManagingHabits(true)}/>}
         </div>
       );
     }
