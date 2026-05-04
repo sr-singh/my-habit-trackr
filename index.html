@@ -601,86 +601,382 @@ function MonthScreen({data,habits}){
 }
 
 // ════════════════════════════════════════════════════════════════
-//  STATS
+//  STATS — New finalized Report design
 // ════════════════════════════════════════════════════════════════
+
+// ── Streak level math ──────────────────────────────────────────
+function calcLevel(streak){
+  // Levels: L1=30, L2=60, L3=90, L4=180, L5=365
+  const THRESHOLDS=[30,60,90,180,365];
+  let lvl=0;
+  for(let i=0;i<THRESHOLDS.length;i++){if(streak>=THRESHOLDS[i])lvl=i+1;}
+  const lvlNum=lvl+1; // display level (current level they're in)
+  const prev=lvl>0?THRESHOLDS[lvl-1]:0;
+  const next=THRESHOLDS[lvl]||null;
+  const pct=next?Math.min(((streak-prev)/(next-prev))*100,100):100;
+  const daysLeft=next?Math.max(next-streak,0):0;
+  return{lvlNum,next,pct,daysLeft};
+}
+
+function calcBestStreak(id,data){
+  const days=Object.keys(data).sort();
+  let best=0,cur=0;
+  for(let i=0;i<days.length;i++){
+    if(data[days[i]]?.[id]==="Y"){cur++;best=Math.max(best,cur);}
+    else if(data[days[i]]?.[id]==="N"){cur=0;}
+  }
+  return best;
+}
+
+// ── Stat number cell ───────────────────────────────────────────
 function StatNum({value,sub}){
   return(
     <div style={{textAlign:"center"}}>
       <div style={{fontSize:24,fontWeight:300,color:T.text,letterSpacing:-0.5,lineHeight:1.1}}>{value}</div>
-      <Lbl style={{marginTop:5,display:"block"}}>{sub}</Lbl>
+      <span style={{fontSize:10,letterSpacing:3,textTransform:"uppercase",color:T.textLow,fontWeight:500,marginTop:5,display:"block"}}>{sub}</span>
     </div>
   );
 }
 
-function NavRow({label,onPrev,onNext,info}){
+// ── Completion bar ─────────────────────────────────────────────
+function CompletionBar({pct}){
   return(
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-      <Lbl style={{color:T.textMid,fontWeight:700,letterSpacing:4}}>{label}</Lbl>
-      <div style={{display:"flex",alignItems:"center",gap:8}}>
-        <IBtn icon="chevL" onClick={onPrev} size={28} is={13}/>
-        <Lbl style={{color:T.textMid,minWidth:110,textAlign:"center"}}>{info}</Lbl>
-        <IBtn icon="chevR" onClick={onNext} size={28} is={13}/>
+    <div style={{display:"flex",alignItems:"center",gap:12,marginTop:14}}>
+      <div style={{flex:1,height:1,background:"#1E1E1E",position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",top:0,left:0,height:"100%",background:"#F2F2F2",width:`${pct}%`}}/>
+      </div>
+      <span style={{fontSize:11,letterSpacing:2,color:"#888",fontWeight:300,minWidth:34,textAlign:"right"}}>{pct}%</span>
+    </div>
+  );
+}
+
+// ── Weekly dot SVG chart ───────────────────────────────────────
+function WeeklyDotChart({vals,keys,isChange}){
+  const wrapRef=useRef();
+  const svgRef=useRef();
+  const lblRef=useRef();
+  const [selIdx,setSelIdx]=useState(null);
+
+  // build points
+  const numVals=keys.map(k=>vals[k]).filter(v=>v!==undefined&&v!=="");
+  const allVals=keys.map(k=>vals[k]);
+  const hasAny=numVals.length>0;
+
+  const VBW=360,VBH=60;
+  const minV=hasAny?Math.min(...numVals):0;
+  const maxV=hasAny?Math.max(...numVals):1;
+  const range=maxV===minV?1:maxV-minV;
+  const PAD=8;
+
+  const pts=keys.map((k,i)=>{
+    const v=vals[k];
+    const x=(keys.length>1)?(i/(keys.length-1))*VBW:VBW/2;
+    const y=(v!==undefined&&v!=="")?VBH-PAD-((v-minV)/range)*(VBH-PAD*2):null;
+    return{x,y,v,k};
+  });
+
+  const connPts=pts.filter(p=>p.y!==null);
+  const polyStr=connPts.map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  const areaD=connPts.length>0?`M${connPts.map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" L")} L${connPts[connPts.length-1].x.toFixed(1)},${VBH} L${connPts[0].x.toFixed(1)},${VBH} Z`:"";
+
+  const WDAYS=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+
+  // label positioning
+  const [lblStyle,setLblStyle]=useState({display:"none"});
+  const [lblText,setLblText]=useState("");
+
+  function selectDot(idx){
+    setSelIdx(idx);
+    const p=pts[idx];
+    if(!p||p.y===null||!svgRef.current||!wrapRef.current){setLblStyle({display:"none"});return;}
+    const svgR=svgRef.current.getBoundingClientRect();
+    const wrapR=wrapRef.current.getBoundingClientRect();
+    const sx=svgR.width/VBW, sy=svgR.height/VBH;
+    const leftPx=(svgR.left-wrapR.left)+p.x*sx;
+    const topPx=(svgR.top-wrapR.top)+p.y*sy-10;
+    setLblText(typeof p.v==="number"?p.v.toFixed(1):p.v);
+    setLblStyle({display:"block",position:"absolute",left:leftPx,top:topPx,transform:"translate(-50%,-100%)",fontSize:9,letterSpacing:1.5,color:"#F2F2F2",fontWeight:500,pointerEvents:"none",whiteSpace:"nowrap"});
+  }
+
+  // auto-select last logged
+  useEffect(()=>{
+    const last=pts.map((p,i)=>({p,i})).filter(({p})=>p.y!==null).pop();
+    if(last){setTimeout(()=>selectDot(last.i),50);}
+  },[]);
+
+  if(!hasAny) return <div style={{marginTop:14,height:60,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:9,letterSpacing:3,color:"#2A2A2A",textTransform:"uppercase"}}>No data</span></div>;
+
+  return(
+    <div ref={wrapRef} style={{position:"relative",marginTop:14,paddingTop:18}}>
+      <span ref={lblRef} style={lblStyle}>{lblText}</span>
+      <svg ref={svgRef} width="100%" height="60" viewBox={`0 0 ${VBW} ${VBH}`} preserveAspectRatio="none" style={{display:"block",overflow:"visible"}}>
+        {[0,20,40,60].map(y=><line key={y} x1="0" y1={y} x2={VBW} y2={y} stroke="#161616" strokeWidth="1"/>)}
+        {areaD&&<path d={areaD} fill="#F2F2F2" fillOpacity="0.03"/>}
+        {connPts.length>1&&<polyline points={polyStr} fill="none" stroke="#F2F2F2" strokeOpacity="0.5" strokeWidth="1" strokeLinejoin="round" strokeLinecap="round"/>}
+        {pts.map((p,i)=>p.y!==null?(
+          <circle key={i} cx={p.x} cy={p.y} r={selIdx===i?3.5:2.5}
+            fill="#F2F2F2" fillOpacity={selIdx===i?1:0.3}
+            style={{cursor:"pointer"}}
+            onClick={()=>selectDot(i)}/>
+        ):null)}
+      </svg>
+      <div style={{display:"flex",justifyContent:"space-between",marginTop:5}}>
+        {WDAYS.slice(0,keys.length).map((d,i)=><span key={i} style={{fontSize:9,letterSpacing:1,color:"#2A2A2A",textTransform:"uppercase"}}>{d}</span>)}
       </div>
     </div>
   );
 }
 
-function PeriodHabits({habits,data,keys}){
-  // sorted: weight → rest → bool → other numbers
-  const sorted=sortStats(habits);
+// ── Monthly scrub chart ────────────────────────────────────────
+function MonthlyScrubChart({vals,keys,totalDays}){
+  const wrapRef=useRef();
+  const svgRef=useRef();
+  const lineRef=useRef();
+  const valRef=useRef();
+  const scrubbingRef=useRef(false);
+  const globalRef=useRef(false);
 
-  function countB(id){return{done:keys.filter(k=>data[k]?.[id]==="Y").length,missed:keys.filter(k=>data[k]?.[id]==="N").length,rest:keys.filter(k=>data[k]?.[id]==="R").length};}
-  function numVals(id){return keys.map(k=>data[k]?.[id]).filter(v=>v!==undefined&&v!=="");}
+  const entries=keys.map((k,i)=>{const v=vals[k];return{day:i+1,k,v}}).filter(e=>e.v!==undefined&&e.v!=="");
+  const hasAny=entries.length>0;
+  const VBW=360,VBH=70,PAD=4;
+  const allV=entries.map(e=>e.v);
+  const minV=hasAny?Math.min(...allV):0;
+  const maxV=hasAny?Math.max(...allV):1;
+  const range=maxV===minV?1:maxV-minV;
+  function dayToX(d){return((d-1)/(totalDays-1||1))*VBW;}
+  function valToY(v){return VBH-PAD-((v-minV)/range)*(VBH-PAD*2);}
+  const pts=entries.map(e=>({x:dayToX(e.day),y:valToY(e.v),val:e.v,day:e.day}));
+  const polyStr=pts.map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  const lastX=pts.length?pts[pts.length-1].x:0;
+  const areaD=pts.length>1?`M${pts.map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" L")} L${lastX.toFixed(1)},${VBH} L0,${VBH} Z`:"";
+
+  function snapToDay(clientX){
+    if(!svgRef.current||!pts.length)return pts[0];
+    const svgR=svgRef.current.getBoundingClientRect();
+    const relX=clientX-svgR.left;
+    const vbX=(relX/svgR.width)*VBW;
+    let best=pts[0],bestD=Infinity;
+    pts.forEach(p=>{const d=Math.abs(p.x-vbX);if(d<bestD){bestD=d;best=p;}});
+    return best;
+  }
+
+  function showScrubber(clientX){
+    if(!lineRef.current||!valRef.current||!wrapRef.current||!svgRef.current)return;
+    const best=snapToDay(clientX);
+    const svgR=svgRef.current.getBoundingClientRect();
+    const wrapR=wrapRef.current.getBoundingClientRect();
+    const lineLeft=svgR.left-wrapR.left+(best.x/VBW)*svgR.width;
+    lineRef.current.style.left=lineLeft+"px";
+    lineRef.current.style.opacity="0.6";
+    const svgTopInWrap=svgR.top-wrapR.top;
+    valRef.current.textContent=best.val.toFixed(1);
+    valRef.current.style.display="block";
+    valRef.current.style.opacity="1";
+    const lblW=valRef.current.offsetWidth||20;
+    let lblLeft=lineLeft-lblW/2;
+    lblLeft=Math.max(0,Math.min(wrapR.width-lblW,lblLeft));
+    valRef.current.style.left=lblLeft+"px";
+    valRef.current.style.top=(svgTopInWrap-16)+"px";
+  }
+
+  function hideScrubber(){
+    if(lineRef.current)lineRef.current.style.opacity="0";
+    if(valRef.current){valRef.current.style.opacity="0";valRef.current.style.display="none";}
+  }
+
+  useEffect(()=>{
+    if(!hasAny)return;
+    // show last point after layout
+    const raf=requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      if(!svgRef.current||!wrapRef.current||!lineRef.current||!valRef.current)return;
+      const last=pts[pts.length-1];
+      const svgR=svgRef.current.getBoundingClientRect();
+      const wrapR=wrapRef.current.getBoundingClientRect();
+      const lineLeft=svgR.left-wrapR.left+(last.x/VBW)*svgR.width;
+      lineRef.current.style.left=lineLeft+"px";
+      lineRef.current.style.opacity="0.6";
+      valRef.current.textContent=last.val.toFixed(1);
+      valRef.current.style.display="block";
+      const lblW=valRef.current.offsetWidth||20;
+      let lblLeft=lineLeft-lblW/2;
+      lblLeft=Math.max(0,Math.min(wrapR.width-lblW,lblLeft));
+      valRef.current.style.left=lblLeft+"px";
+      const svgTopInWrap=svgR.top-wrapR.top;
+      valRef.current.style.top=(svgTopInWrap-16)+"px";
+      valRef.current.style.opacity="1";
+    }));
+    return()=>cancelAnimationFrame(raf);
+  },[hasAny,pts.length]);
+
+  if(!hasAny)return<div style={{marginTop:14,height:70,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:9,letterSpacing:3,color:"#2A2A2A",textTransform:"uppercase"}}>No data</span></div>;
 
   return(
-    <div style={{marginTop:20}}>
+    <div ref={wrapRef} style={{position:"relative",marginTop:14,paddingTop:18,userSelect:"none",WebkitUserSelect:"none"}}
+      onMouseDown={e=>{scrubbingRef.current=true;globalRef.current=true;showScrubber(e.clientX);}}
+      onMouseMove={e=>{if(scrubbingRef.current)showScrubber(e.clientX);}}
+      onMouseUp={()=>{if(scrubbingRef.current){hideScrubber();scrubbingRef.current=false;globalRef.current=false;}}}
+      onMouseLeave={()=>{if(scrubbingRef.current){hideScrubber();scrubbingRef.current=false;globalRef.current=false;}}}
+      onTouchStart={e=>{const t=e.touches[0];scrubbingRef._sx=t.clientX;scrubbingRef._sy=t.clientY;scrubbingRef.current=false;scrubbingRef._may=true;}}
+      onTouchMove={e=>{
+        const t=e.touches[0];
+        const dx=t.clientX-scrubbingRef._sx,dy=t.clientY-scrubbingRef._sy;
+        if(scrubbingRef._may){
+          if(Math.abs(dy)>Math.abs(dx)+5){scrubbingRef._may=false;return;}
+          if(Math.abs(dx)>6){scrubbingRef.current=true;scrubbingRef._may=false;globalRef.current=true;}
+        }
+        if(scrubbingRef.current){e.preventDefault();e.stopPropagation();showScrubber(t.clientX);}
+      }}
+      onTouchEnd={()=>{if(scrubbingRef.current){hideScrubber();globalRef.current=false;scrubbingRef.current=false;}scrubbingRef._may=false;}}
+    >
+      <span ref={valRef} style={{position:"absolute",fontSize:9,letterSpacing:1.5,color:"#F2F2F2",fontWeight:500,pointerEvents:"none",whiteSpace:"nowrap",display:"none",opacity:0,zIndex:11}}/>
+      <div ref={lineRef} style={{position:"absolute",top:18,width:1,background:"#F2F2F2",opacity:0,pointerEvents:"none",zIndex:10,height:70}}/>
+      <svg ref={svgRef} width="100%" height="70" viewBox={`0 0 ${VBW} ${VBH}`} preserveAspectRatio="none" style={{display:"block",overflow:"visible"}}>
+        {[0,VBH/3,VBH*2/3,VBH].map((y,i)=><line key={i} x1="0" y1={y.toFixed(1)} x2={VBW} y2={y.toFixed(1)} stroke="#161616" strokeWidth="1"/>)}
+        {areaD&&<path d={areaD} fill="#F2F2F2" fillOpacity="0.03"/>}
+        {pts.length>1&&<polyline points={polyStr} fill="none" stroke="#F2F2F2" strokeOpacity="0.5" strokeWidth="1" strokeLinejoin="round" strokeLinecap="round"/>}
+      </svg>
+      <div style={{position:"relative",marginTop:5,height:16}}>
+        {[1,Math.round(totalDays/3),Math.round(totalDays*2/3),totalDays].map((d,i)=>(
+          <span key={i} style={{position:"absolute",left:`${((d-1)/(totalDays-1||1))*100}%`,transform:"translateX(-50%)",fontSize:9,letterSpacing:1,color:"#2A2A2A",textTransform:"uppercase",whiteSpace:"nowrap"}}>{d}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Mini bar chart for "number only" habits ────────────────────
+function MiniBars({vals,keys}){
+  const allVals=keys.map(k=>vals[k]).filter(v=>v!==undefined&&v!=="");
+  if(!allVals.length)return<div style={{flex:1,height:52,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:9,letterSpacing:2,color:"#2A2A2A",textTransform:"uppercase"}}>No data</span></div>;
+  const maxV=Math.max(...allVals);
+  const todayKey_=keys[keys.length-1];
+  return(
+    <div style={{flex:1,display:"flex",alignItems:"flex-end",gap:2,height:52}}>
+      {keys.map((k,i)=>{
+        const v=vals[k];
+        if(v===undefined||v==="")return<div key={k} style={{flex:1,height:3,background:"#161616",borderRadius:"1px 1px 0 0"}}/>;
+        const h=Math.max((v/maxV)*100,4);
+        const isToday=k===todayKey_;
+        const opacity=isToday?1:0.18+((i/keys.length)*0.62);
+        return<div key={k} style={{flex:1,height:`${h}%`,background:"#F2F2F2",borderRadius:"1px 1px 0 0",opacity,boxShadow:isToday?"0 0 8px rgba(242,242,242,0.25)":undefined}}/>;
+      })}
+    </div>
+  );
+}
+
+// ── Period habit list ──────────────────────────────────────────
+function PeriodHabits({habits,data,periodKeys,isWeekly}){
+  const sorted=sortStats(habits.filter(h=>!h.streakHabit));
+  const todayK=todayKey();
+
+  function countB(id){
+    return{
+      done:periodKeys.filter(k=>data[k]?.[id]==="Y").length,
+      missed:periodKeys.filter(k=>data[k]?.[id]==="N").length,
+      rest:periodKeys.filter(k=>data[k]?.[id]==="R").length
+    };
+  }
+  function valsMap(id){
+    const m={};
+    periodKeys.forEach(k=>{if(data[k]?.[id]!==undefined&&data[k]?.[id]!=="")m[k]=data[k][id];});
+    return m;
+  }
+  function numArr(id){return periodKeys.map(k=>data[k]?.[id]).filter(v=>v!==undefined&&v!=="");}
+
+  if(!sorted.length)return<div style={{marginTop:20,textAlign:"center"}}><span style={{fontSize:9,letterSpacing:3,color:"#2A2A2A",textTransform:"uppercase"}}>No habits to show</span></div>;
+
+  return(
+    <div style={{marginTop:4}}>
       {sorted.map((h,i)=>{
         const isLast=i===sorted.length-1;
-        const border=isLast?"none":`1px solid ${T.border}`;
+        const borderStyle=isLast?"none":`1px solid ${T.border}`;
+        const vmap=valsMap(h.id);
+        const logged=Object.keys(vmap).length;
 
-        if(h.type==="number"&&h.trackChange){
-          const vals=numVals(h.id);
-          const first=vals[0],last=vals[vals.length-1];
-          const avg=vals.length?(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1):null;
-          const change=(first!==undefined&&last!==undefined)?+(last-first).toFixed(1):null;
-          return(
-            <div key={h.id} style={{padding:"14px 0",borderBottom:border}}>
-              <span style={{fontSize:11,fontWeight:500,color:T.text,letterSpacing:3,textTransform:"uppercase"}}>{h.label}</span>
-              <div style={{marginTop:12,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:4}}>
-                <StatNum value={first?first.toFixed(1):"—"} sub="Start"/>
-                <StatNum value={last?last.toFixed(1):"—"} sub="End"/>
-                <StatNum value={change!==null?`${change>0?"+":""}${change}`:"—"} sub="Change"/>
-              </div>
-            </div>
-          );
-        }
-
+        // ── Bool: done/miss or done/miss/rest ──
         if(h.type==="bool"){
           const {done,missed,rest}=countB(h.id);
+          const total=periodKeys.length;
+          const pct=total>0?Math.round((done/total)*100):0;
+          const cols=h.restAllowed?"1fr 1fr 1fr":"1fr 1fr";
           return(
-            <div key={h.id} style={{padding:"14px 0",borderBottom:border}}>
+            <div key={h.id} style={{padding:"18px 0",borderBottom:borderStyle}}>
               <span style={{fontSize:11,fontWeight:500,color:T.text,letterSpacing:3,textTransform:"uppercase"}}>{h.label}</span>
-              <div style={{marginTop:12,display:"grid",gridTemplateColumns:h.restAllowed?"1fr 1fr 1fr":"1fr 1fr",gap:4}}>
+              <div style={{marginTop:14,display:"grid",gridTemplateColumns:cols,gap:4}}>
                 <StatNum value={done} sub="Done"/>
                 <StatNum value={missed} sub="Missed"/>
                 {h.restAllowed&&<StatNum value={rest} sub="Rest"/>}
               </div>
+              <CompletionBar pct={pct}/>
             </div>
           );
         }
 
-        // other number (sleep etc)
-        const vals=numVals(h.id);
-        const avg=vals.length?(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1):null;
-        const min=vals.length?Math.min(...vals).toFixed(1):null;
-        const max=vals.length?Math.max(...vals).toFixed(1):null;
+        // ── Number / Average ──
+        if(h.type==="number"&&h.trackAverage){
+          const vals=numArr(h.id);
+          const avg=vals.length?(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1):"—";
+          const min=vals.length?Math.min(...vals).toFixed(1):"—";
+          const max=vals.length?Math.max(...vals).toFixed(1):"—";
+          return(
+            <div key={h.id} style={{padding:"18px 0",borderBottom:borderStyle}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
+                <span style={{fontSize:11,fontWeight:500,color:T.text,letterSpacing:3,textTransform:"uppercase"}}>{h.label}</span>
+                <span style={{fontSize:9,letterSpacing:2,textTransform:"uppercase",color:"#3A3A3A",fontWeight:500}}>{logged} logged</span>
+              </div>
+              {isWeekly
+                ?<WeeklyDotChart vals={vmap} keys={periodKeys} isChange={false}/>
+                :<MonthlyScrubChart vals={vmap} keys={periodKeys} totalDays={periodKeys.length}/>
+              }
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:4,marginTop:14,paddingTop:14,borderTop:`1px solid ${T.border}`}}>
+                <StatNum value={min} sub="Min"/>
+                <StatNum value={max} sub="Max"/>
+                <StatNum value={avg} sub="Avg"/>
+              </div>
+            </div>
+          );
+        }
+
+        // ── Number / Change ──
+        if(h.type==="number"&&h.trackChange){
+          const vals=numArr(h.id);
+          const first=vals.length?vals[0].toFixed(1):"—";
+          const last=vals.length?vals[vals.length-1].toFixed(1):"—";
+          const chg=vals.length>1?+(vals[vals.length-1]-vals[0]).toFixed(1):null;
+          return(
+            <div key={h.id} style={{padding:"18px 0",borderBottom:borderStyle}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
+                <span style={{fontSize:11,fontWeight:500,color:T.text,letterSpacing:3,textTransform:"uppercase"}}>{h.label}</span>
+                <span style={{fontSize:9,letterSpacing:2,textTransform:"uppercase",color:"#3A3A3A",fontWeight:500}}>{logged} logged</span>
+              </div>
+              {isWeekly
+                ?<WeeklyDotChart vals={vmap} keys={periodKeys} isChange={true}/>
+                :<MonthlyScrubChart vals={vmap} keys={periodKeys} totalDays={periodKeys.length}/>
+              }
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:4,marginTop:14,paddingTop:14,borderTop:`1px solid ${T.border}`}}>
+                <StatNum value={first} sub="Start"/>
+                <StatNum value={last} sub="End"/>
+                <StatNum value={chg!==null?`${chg>0?"+":""}${chg}`:"—"} sub="Change"/>
+              </div>
+            </div>
+          );
+        }
+
+        // ── Number only (bar chart) ──
+        const vals=numArr(h.id);
+        const lastVal=vals.length?vals[vals.length-1]:null;
         return(
-          <div key={h.id} style={{padding:"14px 0",borderBottom:border}}>
-            <span style={{fontSize:11,fontWeight:500,color:T.text,letterSpacing:3,textTransform:"uppercase"}}>{h.label}</span>
-            <div style={{marginTop:12,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:4}}>
-              <StatNum value={avg||"—"} sub="Avg"/>
-              <StatNum value={min||"—"} sub="Min"/>
-              <StatNum value={max||"—"} sub="Max"/>
+          <div key={h.id} style={{padding:"18px 0",borderBottom:borderStyle}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:18}}>
+              <span style={{fontSize:11,fontWeight:500,color:T.text,letterSpacing:3,textTransform:"uppercase"}}>{h.label}</span>
+              <span style={{fontSize:9,letterSpacing:2,textTransform:"uppercase",color:"#3A3A3A",fontWeight:500}}>{logged} logged</span>
+            </div>
+            <div style={{display:"flex",gap:20,alignItems:"flex-end"}}>
+              <div>
+                <div style={{fontSize:52,fontWeight:200,letterSpacing:-2,lineHeight:1,color:T.text}}>{lastVal!==null?lastVal:"—"}</div>
+                <div style={{fontSize:9,letterSpacing:3,textTransform:"uppercase",color:"#3A3A3A",marginTop:4}}>Last</div>
+              </div>
+              <MiniBars vals={vmap} keys={periodKeys}/>
             </div>
           </div>
         );
@@ -689,15 +985,59 @@ function PeriodHabits({habits,data,keys}){
   );
 }
 
+// ── Streak panel ───────────────────────────────────────────────
+function StreakPanel({habits,data}){
+  const streakH=habits.filter(h=>h.type==="bool"&&h.streakHabit);
+  if(!streakH.length)return(
+    <div style={{paddingTop:32,textAlign:"center"}}>
+      <span style={{fontSize:9,letterSpacing:3,color:"#2A2A2A",textTransform:"uppercase"}}>No streak habits yet</span>
+    </div>
+  );
+  return(
+    <div>
+      {streakH.map((h,i)=>{
+        const streak=calcStreak(h.id,data);
+        const best=calcBestStreak(h.id,data);
+        const {lvlNum,next,pct,daysLeft}=calcLevel(streak);
+        const isLast=i===streakH.length-1;
+        return(
+          <div key={h.id} style={{padding:"22px 0",borderBottom:isLast?"none":`1px solid ${T.border}`}}>
+            <div style={{fontSize:11,fontWeight:500,color:T.text,letterSpacing:3,textTransform:"uppercase",marginBottom:16}}>{h.label}</div>
+            <div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between"}}>
+              <div style={{display:"flex",alignItems:"baseline",gap:7}}>
+                <span style={{fontSize:56,fontWeight:200,letterSpacing:-2,lineHeight:1,color:T.text}}>{streak}</span>
+                <span style={{fontSize:10,letterSpacing:3,textTransform:"uppercase",color:"#3A3A3A"}}>days</span>
+              </div>
+              <div style={{textAlign:"right",paddingBottom:8}}>
+                <div style={{fontSize:20,fontWeight:300,color:"#444",letterSpacing:-0.5}}>{best}</div>
+                <span style={{fontSize:8,letterSpacing:3,textTransform:"uppercase",color:"#444",marginTop:3,display:"block"}}>Best ever</span>
+              </div>
+            </div>
+            <div style={{marginTop:18}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <span style={{fontSize:9,letterSpacing:3,textTransform:"uppercase",color:"#555",fontWeight:600}}>Level {lvlNum}</span>
+                {next?<span style={{fontSize:9,letterSpacing:2,textTransform:"uppercase",color:"#2A2A2A"}}><span style={{color:"#3A3A3A"}}>{daysLeft} days</span> to Level {lvlNum+1}</span>
+                     :<span style={{fontSize:9,letterSpacing:2,textTransform:"uppercase",color:"#3A3A3A"}}>Max level</span>}
+              </div>
+              <div style={{height:1,background:"#1E1E1E",position:"relative",overflow:"hidden"}}>
+                <div style={{position:"absolute",top:0,left:0,height:"100%",background:"#F2F2F2",width:`${pct}%`}}/>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Main StatsScreen ───────────────────────────────────────────
 function StatsScreen({data,habits}){
   const now=new Date();
+  const [activeTab,setActiveTab]=useState(0); // 0=Streaks 1=Weekly 2=Monthly
   const [wY,setWY]=useState(now.getFullYear()); const [wM,setWM]=useState(now.getMonth());
   const [wI,setWI]=useState(Math.floor((now.getDate()-1)/7));
   const [mY,setMY]=useState(now.getFullYear()); const [mM,setMM]=useState(now.getMonth());
-
-  const streakH=habits.filter(h=>h.type==="bool"&&h.streakHabit);
-  // non-streak habits for weekly/monthly
-  const nonStreakH=habits.filter(h=>!h.streakHabit);
+  const trackRef=useRef();
 
   const wDim=getDaysInMonth(wY,wM); const maxWI=Math.floor((wDim-1)/7);
   const wStart=wI*7+1; const wEnd=Math.min(wStart+6,wDim);
@@ -707,57 +1047,92 @@ function StatsScreen({data,habits}){
   const prevMo=()=>mM===0?(setMY(y=>y-1),setMM(11)):setMM(m=>m-1);
   const nextMo=()=>mM===11?(setMY(y=>y+1),setMM(0)):setMM(m=>m+1);
 
-  function keys(y,m,s,e){return Array.from({length:e-s+1},(_,i)=>`${y}-${String(m+1).padStart(2,"0")}-${String(s+i).padStart(2,"0")}`);}
-  function moKeys(y,m){return keys(y,m,1,getDaysInMonth(y,m));}
+  function dayKeys(y,m,s,e){return Array.from({length:e-s+1},(_,i)=>`${y}-${String(m+1).padStart(2,"0")}-${String(s+i).padStart(2,"0")}`);}
+  function moKeys(y,m){return dayKeys(y,m,1,getDaysInMonth(y,m));}
 
-  const wKeys=keys(wY,wM,wStart,wEnd);
+  const wKeys=dayKeys(wY,wM,wStart,wEnd);
   const mKeys=moKeys(mY,mM);
+
+  // swipe gesture on tab panels
+  const swipeRef=useRef({sx:0,sy:0,lk:false});
+  function onSwipeStart(e){swipeRef.current={sx:e.touches[0].clientX,sy:e.touches[0].clientY,lk:false};}
+  function onSwipeMove(e){
+    const s=swipeRef.current;
+    if(s.lk)return;
+    const dx=e.touches[0].clientX-s.sx,dy=e.touches[0].clientY-s.sy;
+    if(Math.abs(dx)>Math.abs(dy)&&Math.abs(dx)>8){s.lk=true;e.preventDefault();}
+  }
+  function onSwipeEnd(e){
+    const s=swipeRef.current;
+    const dx=e.changedTouches[0].clientX-s.sx,dy=e.changedTouches[0].clientY-s.sy;
+    if(Math.abs(dx)>Math.abs(dy)&&Math.abs(dx)>40){
+      setActiveTab(t=>Math.max(0,Math.min(2,t+(dx<0?1:-1))));
+    }
+  }
+
+  const TABS=["Streaks","Weekly","Monthly"];
 
   return(
     <div style={{paddingBottom:100}}>
-      <div style={{padding:"52px 24px 24px",textAlign:"center"}}>
+      {/* Header */}
+      <div style={{padding:"52px 24px 20px",display:"flex",alignItems:"center",justifyContent:"center"}}>
         <div style={{fontSize:26,fontWeight:300,letterSpacing:-0.5,color:T.text}}>Report</div>
       </div>
       <Hr/>
-      <div style={{padding:"28px 24px",display:"flex",flexDirection:"column",gap:40}}>
 
-        {/* STREAKS */}
-        {streakH.length>0&&(
-          <section>
-            <Lbl style={{color:T.textMid,fontWeight:700,letterSpacing:4}}>Streaks</Lbl>
-            <div style={{marginTop:20}}>
-              {streakH.map((h,i)=>{
-                const streak=calcStreak(h.id,data);
-                const allK=Object.keys(data);
-                const done=allK.filter(k=>data[k]?.[h.id]==="Y").length;
-                const missed=allK.filter(k=>data[k]?.[h.id]==="N").length;
-                return(
-                  <div key={h.id} style={{paddingBottom:i<streakH.length-1?22:0,borderBottom:i<streakH.length-1?`1px solid ${T.border}`:"none",marginBottom:i<streakH.length-1?22:0}}>
-                    <span style={{fontSize:11,fontWeight:500,color:T.text,letterSpacing:3,textTransform:"uppercase"}}>{h.label}</span>
-                    <div style={{marginTop:14,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:4}}>
-                      <StatNum value={streak} sub="Streak"/>
-                      <StatNum value={done} sub="Done"/>
-                      <StatNum value={missed} sub="Missed"/>
-                    </div>
-                  </div>
-                );
-              })}
+      {/* Tab bar */}
+      <div style={{position:"sticky",top:0,zIndex:60,background:T.bg,borderBottom:`1px solid ${T.border}`,display:"flex"}}>
+        {TABS.map((label,i)=>(
+          <button key={i} onClick={()=>setActiveTab(i)} style={{
+            flex:1,padding:"15px 0",textAlign:"center",fontSize:9,letterSpacing:3.5,
+            textTransform:"uppercase",background:"none",border:"none",cursor:"pointer",
+            fontFamily:"inherit",fontWeight:700,
+            color:activeTab===i?"#F2F2F2":"#3A3A3A",
+            borderBottom:activeTab===i?"1px solid #F2F2F2":"1px solid transparent",
+            position:"relative",bottom:-1,transition:"color .2s,border-color .2s"
+          }}>{label}</button>
+        ))}
+      </div>
+
+      {/* Swipe panels */}
+      <div style={{overflow:"hidden",width:"100%"}}
+        onTouchStart={onSwipeStart} onTouchMove={onSwipeMove} onTouchEnd={onSwipeEnd}>
+        <div ref={trackRef} style={{display:"flex",transition:"transform .32s cubic-bezier(0.4,0,0.2,1)",transform:`translateX(-${activeTab*100}%)`,willChange:"transform"}}>
+
+          {/* ── STREAKS panel ── */}
+          <div style={{minWidth:"100%",flexShrink:0,padding:"0 24px 40px"}}>
+            <StreakPanel habits={habits} data={data}/>
+          </div>
+
+          {/* ── WEEKLY panel ── */}
+          <div style={{minWidth:"100%",flexShrink:0,padding:"0 24px 40px"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"20px 0 6px"}}>
+              <button onClick={prevWeek} style={{width:28,height:28,background:"#161616",border:"1px solid #1E1E1E",borderRadius:8,color:"#888",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                <Icon n="chevL" s={13}/>
+              </button>
+              <span style={{fontSize:10,letterSpacing:3,textTransform:"uppercase",color:"#888",minWidth:100,textAlign:"center"}}>{MONTHS[wM].slice(0,3)}  {wStart}–{wEnd}</span>
+              <button onClick={nextWeek} style={{width:28,height:28,background:"#161616",border:"1px solid #1E1E1E",borderRadius:8,color:"#888",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                <Icon n="chevR" s={13}/>
+              </button>
             </div>
-          </section>
-        )}
+            <PeriodHabits habits={habits} data={data} periodKeys={wKeys} isWeekly={true}/>
+          </div>
 
-        {/* WEEKLY */}
-        <section>
-          <NavRow label="Weekly" onPrev={prevWeek} onNext={nextWeek} info={`${MONTHS[wM].slice(0,3)}  ${wStart}–${wEnd}`}/>
-          <PeriodHabits habits={nonStreakH} data={data} keys={wKeys}/>
-        </section>
+          {/* ── MONTHLY panel ── */}
+          <div style={{minWidth:"100%",flexShrink:0,padding:"0 24px 40px"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"20px 0 6px"}}>
+              <button onClick={prevMo} style={{width:28,height:28,background:"#161616",border:"1px solid #1E1E1E",borderRadius:8,color:"#888",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                <Icon n="chevL" s={13}/>
+              </button>
+              <span style={{fontSize:10,letterSpacing:3,textTransform:"uppercase",color:"#888",minWidth:100,textAlign:"center"}}>{MONTHS[mM].slice(0,3)}  {mY}</span>
+              <button onClick={nextMo} style={{width:28,height:28,background:"#161616",border:"1px solid #1E1E1E",borderRadius:8,color:"#888",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                <Icon n="chevR" s={13}/>
+              </button>
+            </div>
+            <PeriodHabits habits={habits} data={data} periodKeys={mKeys} isWeekly={false}/>
+          </div>
 
-        {/* MONTHLY */}
-        <section>
-          <NavRow label="Monthly" onPrev={prevMo} onNext={nextMo} info={`${MONTHS[mM].slice(0,3)}  ${mY}`}/>
-          <PeriodHabits habits={nonStreakH} data={data} keys={mKeys}/>
-        </section>
-
+        </div>
       </div>
     </div>
   );
