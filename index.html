@@ -651,11 +651,20 @@ function CompletionBar({pct}){
 }
 
 // ── Weekly dot SVG chart ───────────────────────────────────────
-function WeeklyDotChart({vals,keys,isChange}){
+function WeeklyDotChart({vals,keys,isChange,resetKey}){
   const wrapRef=useRef();
   const svgRef=useRef();
   const lblRef=useRef();
   const [selIdx,setSelIdx]=useState(null);
+
+  // helper: find the index of today's key, or fall back to last logged
+  function todayOrLastIdx(ptsArr){
+    const tk=todayKey();
+    const todayI=keys.indexOf(tk);
+    if(todayI!==-1&&ptsArr[todayI]&&ptsArr[todayI].y!==null)return todayI;
+    const last=ptsArr.map((p,i)=>({p,i})).filter(({p})=>p.y!==null).pop();
+    return last?last.i:null;
+  }
 
   // build points
   const numVals=keys.map(k=>vals[k]).filter(v=>v!==undefined&&v!=="");
@@ -698,11 +707,11 @@ function WeeklyDotChart({vals,keys,isChange}){
     setLblStyle({display:"block",position:"absolute",left:leftPx,top:topPx,transform:"translate(-50%,-100%)",fontSize:9,letterSpacing:1.5,color:"#F2F2F2",fontWeight:500,pointerEvents:"none",whiteSpace:"nowrap"});
   }
 
-  // auto-select last logged
+  // auto-select today (or last logged); re-run when resetKey changes (tab re-entry)
   useEffect(()=>{
-    const last=pts.map((p,i)=>({p,i})).filter(({p})=>p.y!==null).pop();
-    if(last){setTimeout(()=>selectDot(last.i),50);}
-  },[]);
+    const idx=todayOrLastIdx(pts);
+    if(idx!==null){setTimeout(()=>selectDot(idx),50);}
+  },[resetKey]);
 
   if(!hasAny) return <div style={{marginTop:14,height:60,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:9,letterSpacing:3,color:"#2A2A2A",textTransform:"uppercase"}}>No data</span></div>;
 
@@ -823,11 +832,15 @@ function MonthlyScrubChart({vals,keys,totalDays,resetKey}){
         {[0,VBH/3,VBH*2/3,VBH].map((y,i)=><line key={i} x1="0" y1={y.toFixed(1)} x2={VBW} y2={y.toFixed(1)} stroke="#161616" strokeWidth="1"/>)}
         {areaD&&<path d={areaD} fill="#F2F2F2" fillOpacity="0.03"/>}
         {pts.length>1&&<polyline points={polyStr} fill="none" stroke="#F2F2F2" strokeOpacity="0.5" strokeWidth="1" strokeLinejoin="round" strokeLinecap="round"/>}
-        {pts.map((p,i)=>(
-          <circle key={i} cx={p.x.toFixed(1)} cy={p.y.toFixed(1)} r="1.5"
-            fill="#F2F2F2" fillOpacity="0.35"
-            style={{pointerEvents:"none"}}/>
-        ))}
+        {pts.map((p,i)=>{
+          const isLast=i===pts.length-1;
+          return(
+            <circle key={i} cx={p.x.toFixed(1)} cy={p.y.toFixed(1)}
+              r={isLast?"3.5":"1.5"}
+              fill="#F2F2F2" fillOpacity={isLast?"1":"0.35"}
+              style={{pointerEvents:"none"}}/>
+          );
+        })}
       </svg>
       <div style={{position:"relative",marginTop:5,height:16}}>
         {[1,Math.round(totalDays/3),Math.round(totalDays*2/3),totalDays].map((d,i)=>(
@@ -841,53 +854,103 @@ function MonthlyScrubChart({vals,keys,totalDays,resetKey}){
 // ── Mini bar chart for "number only" habits ────────────────────
 function MiniBars({vals,keys,selKey,onSelect}){
   const allVals=keys.map(k=>vals[k]).filter(v=>v!==undefined&&v!=="");
-  if(!allVals.length)return(
-    <div style={{flex:1,height:52,display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <span style={{fontSize:9,letterSpacing:2,color:"#2A2A2A",textTransform:"uppercase",textAlign:"center"}}>No data</span>
-    </div>
-  );
+
+  if(!allVals.length){
+    // no-data: full height so it sits centered in the outer flex container
+    return(
+      <div style={{flex:1,height:52,display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <span style={{fontSize:9,letterSpacing:2,color:"#2A2A2A",textTransform:"uppercase"}}>No data</span>
+      </div>
+    );
+  }
+
   const maxV=Math.max(...allVals);
+  const LABEL_H=16; // px reserved above bars for the floating value label
+  const BAR_H=52;   // px height of the bar area
+
   return(
-    <div style={{flex:1,display:"flex",alignItems:"flex-end",gap:2,height:52}}>
+    // outer wrapper: taller by LABEL_H to give room for the floating label
+    <div style={{flex:1,position:"relative",height:BAR_H+LABEL_H,display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
+      {/* floating value label — absolutely positioned above the selected bar */}
       {keys.map((k,i)=>{
-        const v=vals[k];
-        const isSel=k===selKey;
-        if(v===undefined||v==="")return<div key={k} style={{flex:1,height:3,background:"#161616",borderRadius:"1px 1px 0 0"}}/>;
-        const h=Math.max((v/maxV)*100,4);
-        const opacity=isSel?1:0.18+((i/keys.length)*0.62);
+        if(k!==selKey||vals[k]===undefined||vals[k]==="")return null;
+        const barH=Math.max((vals[k]/maxV)*100,4); // %
+        // x position: centre of bar slot
+        const slotW=100/keys.length;
+        const leftPct=slotW*i+slotW/2;
         return(
-          <div key={k} onClick={()=>onSelect(k)}
-            style={{flex:1,height:`${h}%`,background:"#F2F2F2",borderRadius:"1px 1px 0 0",opacity,
-              boxShadow:isSel?"0 0 8px rgba(242,242,242,0.25)":undefined,cursor:"pointer",position:"relative"}}/>
+          <span key={"lbl"+k} style={{
+            position:"absolute",
+            bottom:`${BAR_H*(barH/100)+4}px`,
+            left:`${leftPct}%`,
+            transform:"translateX(-50%)",
+            fontSize:9,letterSpacing:1.5,color:"#F2F2F2",fontWeight:500,
+            whiteSpace:"nowrap",pointerEvents:"none",zIndex:2
+          }}>{typeof vals[k]==="number"?vals[k].toFixed(vals[k]%1===0?0:1):vals[k]}</span>
         );
       })}
+
+      {/* bars */}
+      <div style={{display:"flex",alignItems:"flex-end",gap:2,height:BAR_H,width:"100%"}}>
+        {keys.map((k,i)=>{
+          const v=vals[k];
+          const isSel=k===selKey;
+          if(v===undefined||v==="")
+            return<div key={k} style={{flex:1,height:3,background:"#161616",borderRadius:"1px 1px 0 0"}}/>;
+          const bh=Math.max((v/maxV)*100,4);
+          const opacity=isSel?1:0.18+((i/keys.length)*0.62);
+          return(
+            <div key={k} onClick={()=>onSelect(k)} style={{
+              flex:1,height:`${bh}%`,background:"#F2F2F2",
+              borderRadius:"1px 1px 0 0",opacity,cursor:"pointer",
+              boxShadow:isSel?"0 0 8px rgba(242,242,242,0.25)":undefined
+            }}/>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-function NumberOnlyCard({h,vmap,periodKeys,borderStyle}){
-  const allVals=periodKeys.map(k=>vmap[k]).filter(v=>v!==undefined&&v!=="");
-  // default selection: last logged key within periodKeys
-  const lastLoggedKey=periodKeys.slice().reverse().find(k=>vmap[k]!==undefined&&vmap[k]!=="");
-  const [selKey,setSelKey]=useState(lastLoggedKey||null);
+function NumberOnlyCard({h,vmap,periodKeys,borderStyle,resetKey}){
+  const todayK=todayKey();
 
-  // keep selKey pointing at last-logged whenever data changes
+  // default selection: today if in period, else last logged key
+  function getDefaultKey(){
+    if(periodKeys.includes(todayK)&&vmap[todayK]!==undefined&&vmap[todayK]!=="")return todayK;
+    return periodKeys.slice().reverse().find(k=>vmap[k]!==undefined&&vmap[k]!=="")||null;
+  }
+
+  const [selKey,setSelKey]=useState(()=>getDefaultKey());
+
+  // reset to today (or last logged) whenever period/data changes or resetKey bumps
   useEffect(()=>{
-    const last=periodKeys.slice().reverse().find(k=>vmap[k]!==undefined&&vmap[k]!=="");
-    setSelKey(last||null);
-  },[periodKeys.join(","),JSON.stringify(vmap)]);
+    setSelKey(getDefaultKey());
+  },[periodKeys.join(","),JSON.stringify(vmap),resetKey]);
 
   const selVal=selKey&&vmap[selKey]!==undefined?vmap[selKey]:null;
-  const isToday=selKey&&selKey===periodKeys[periodKeys.length-1];
+
+  // label: "Today" if selKey is today, otherwise show the date nicely
+  function labelForKey(k){
+    if(!k)return"Today";
+    if(k===todayK)return"Today";
+    // k is "YYYY-MM-DD"
+    const [y,mo,d]=k.split("-");
+    const dt=new Date(+y,+mo-1,+d);
+    return dt.toLocaleDateString(undefined,{month:"short",day:"numeric"});
+  }
+  const labelText=labelForKey(selKey);
 
   return(
     <div style={{padding:"18px 0",borderBottom:borderStyle}}>
       <span style={{fontSize:11,fontWeight:500,color:T.text,letterSpacing:3,textTransform:"uppercase"}}>{h.label}</span>
       <div style={{display:"flex",gap:20,alignItems:"flex-end",marginTop:18}}>
-        <div style={{minWidth:52,flexShrink:0}}>
+        {/* left: big number + Today label */}
+        <div style={{flexShrink:0}}>
           <div style={{fontSize:52,fontWeight:200,letterSpacing:-2,lineHeight:1,color:T.text}}>{selVal!==null?selVal:"—"}</div>
-          <div style={{fontSize:9,letterSpacing:3,textTransform:"uppercase",color:"#3A3A3A",marginTop:4}}>{isToday?"Today":"Selected"}</div>
+          <div style={{fontSize:9,letterSpacing:3,textTransform:"uppercase",color:"#3A3A3A",marginTop:4}}>{labelText}</div>
         </div>
+        {/* right: interactive bar chart */}
         <MiniBars vals={vmap} keys={periodKeys} selKey={selKey} onSelect={setSelKey}/>
       </div>
     </div>
@@ -950,7 +1013,7 @@ function PeriodHabits({habits,data,periodKeys,isWeekly,resetKey}){
             <div key={h.id} style={{padding:"18px 0",borderBottom:borderStyle}}>
               <span style={{fontSize:11,fontWeight:500,color:T.text,letterSpacing:3,textTransform:"uppercase"}}>{h.label}</span>
               {isWeekly
-                ?<WeeklyDotChart vals={vmap} keys={periodKeys} isChange={false}/>
+                ?<WeeklyDotChart vals={vmap} keys={periodKeys} isChange={false} resetKey={resetKey}/>
                 :<MonthlyScrubChart vals={vmap} keys={periodKeys} totalDays={periodKeys.length} resetKey={resetKey}/>
               }
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:4,marginTop:14,paddingTop:14,borderTop:`1px solid ${T.border}`}}>
@@ -972,7 +1035,7 @@ function PeriodHabits({habits,data,periodKeys,isWeekly,resetKey}){
             <div key={h.id} style={{padding:"18px 0",borderBottom:borderStyle}}>
               <span style={{fontSize:11,fontWeight:500,color:T.text,letterSpacing:3,textTransform:"uppercase"}}>{h.label}</span>
               {isWeekly
-                ?<WeeklyDotChart vals={vmap} keys={periodKeys} isChange={true}/>
+                ?<WeeklyDotChart vals={vmap} keys={periodKeys} isChange={true} resetKey={resetKey}/>
                 :<MonthlyScrubChart vals={vmap} keys={periodKeys} totalDays={periodKeys.length} resetKey={resetKey}/>
               }
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:4,marginTop:14,paddingTop:14,borderTop:`1px solid ${T.border}`}}>
@@ -985,7 +1048,7 @@ function PeriodHabits({habits,data,periodKeys,isWeekly,resetKey}){
         }
 
         // ── Number only (interactive bar chart) ──
-        return <NumberOnlyCard key={h.id} h={h} vmap={vmap} periodKeys={periodKeys} borderStyle={borderStyle}/>;
+        return <NumberOnlyCard key={h.id} h={h} vmap={vmap} periodKeys={periodKeys} borderStyle={borderStyle} resetKey={resetKey}/>;
       })}
     </div>
   );
@@ -1047,12 +1110,17 @@ function StatsScreen({data,habits}){
   // resetKey increments each time user enters the Report tab (handled by parent via key prop or tab switch)
   // We use a ref-based counter that bumps when activeTab becomes 2 (monthly)
   const [monthResetKey,setMonthResetKey]=useState(0);
+  const [weekResetKey,setWeekResetKey]=useState(0);
   const prevTabRef=useRef(activeTab);
 
   useEffect(()=>{
     // When switching TO monthly tab, bump reset key so charts snap back to current day
     if(activeTab===2&&prevTabRef.current!==2){
       setMonthResetKey(k=>k+1);
+    }
+    // When switching TO weekly tab, bump reset key so charts snap back to today
+    if(activeTab===1&&prevTabRef.current!==1){
+      setWeekResetKey(k=>k+1);
     }
     prevTabRef.current=activeTab;
   },[activeTab]);
@@ -1133,7 +1201,7 @@ function StatsScreen({data,habits}){
                 <Icon n="chevR" s={13}/>
               </button>
             </div>
-            <PeriodHabits habits={habits} data={data} periodKeys={wKeys} isWeekly={true}/>
+            <PeriodHabits habits={habits} data={data} periodKeys={wKeys} isWeekly={true} resetKey={weekResetKey}/>
           </div>
 
           {/* ── MONTHLY panel ── */}
