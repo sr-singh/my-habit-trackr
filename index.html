@@ -688,7 +688,7 @@ function WeeklyDotChart({vals,keys,isChange,resetKey}){
   const polyStr=connPts.map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
   const areaD=connPts.length>0?`M${connPts.map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" L")} L${connPts[connPts.length-1].x.toFixed(1)},${VBH} L${connPts[0].x.toFixed(1)},${VBH} Z`:"";
 
-  const WDAYS=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+  const WDAYS=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
   // label positioning
   const [lblStyle,setLblStyle]=useState({display:"none"});
@@ -730,7 +730,11 @@ function WeeklyDotChart({vals,keys,isChange,resetKey}){
         ):null)}
       </svg>
       <div style={{display:"flex",justifyContent:"space-between",marginTop:5}}>
-        {WDAYS.slice(0,keys.length).map((d,i)=><span key={i} style={{fontSize:9,letterSpacing:1,color:"#2A2A2A",textTransform:"uppercase"}}>{d}</span>)}
+        {keys.map((k,i)=>{
+          const [y,mo,d]=k.split("-");
+          const dow=new Date(+y,+mo-1,+d).getDay();
+          return<span key={i} style={{fontSize:9,letterSpacing:1,color:"#2A2A2A",textTransform:"uppercase"}}>{WDAYS[dow]}</span>;
+        })}
       </div>
     </div>
   );
@@ -791,10 +795,31 @@ function MonthlyScrubChart({vals,keys,totalDays,resetKey}){
     placeScrubber(best);
   }
 
-  // On mount (or resetKey change), snap to last logged point
-  function snapToLast(){
+  // On mount (or resetKey change), snap to today's date position (or last logged if today not in range)
+  function snapToToday(){
     if(!hasAny)return;
     const raf=requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      const tk=todayKey();
+      const todayEntry=entries.find(e=>e.k===tk);
+      if(todayEntry){
+        // today has data — use its exact point
+        const tp=pts.find(p=>p.day===todayEntry.day);
+        if(tp){placeScrubber(tp);return;}
+      }
+      // today has no data but is in the month range — snap line to today's x position using day number
+      const todayDayNum=(()=>{
+        const idx=keys.indexOf(tk);
+        return idx!==-1?idx+1:null;
+      })();
+      if(todayDayNum!==null){
+        // find nearest pt
+        const todayX=dayToX(todayDayNum);
+        let best=pts[0],bestD=Infinity;
+        pts.forEach(p=>{const d=Math.abs(p.x-todayX);if(d<bestD){bestD=d;best=p;}});
+        placeScrubber(best);
+        return;
+      }
+      // fallback: last logged
       const last=pts[pts.length-1];
       placeScrubber(last);
     }));
@@ -802,7 +827,7 @@ function MonthlyScrubChart({vals,keys,totalDays,resetKey}){
   }
 
   useEffect(()=>{
-    const raf=snapToLast();
+    const raf=snapToToday();
     return()=>{if(raf)cancelAnimationFrame(raf);};
   },[hasAny,resetKey]);
 
@@ -856,7 +881,6 @@ function MiniBars({vals,keys,selKey,onSelect}){
   const allVals=keys.map(k=>vals[k]).filter(v=>v!==undefined&&v!=="");
 
   if(!allVals.length){
-    // no-data: full height so it sits centered in the outer flex container
     return(
       <div style={{flex:1,height:52,display:"flex",alignItems:"center",justifyContent:"center"}}>
         <span style={{fontSize:9,letterSpacing:2,color:"#2A2A2A",textTransform:"uppercase"}}>No data</span>
@@ -865,45 +889,25 @@ function MiniBars({vals,keys,selKey,onSelect}){
   }
 
   const maxV=Math.max(...allVals);
-  const LABEL_H=16; // px reserved above bars for the floating value label
-  const BAR_H=52;   // px height of the bar area
+  const BAR_H=52;
 
   return(
-    // outer wrapper: taller by LABEL_H to give room for the floating label
-    <div style={{flex:1,position:"relative",height:BAR_H+LABEL_H,display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
-      {/* floating value label — absolutely positioned above the selected bar */}
-      {keys.map((k,i)=>{
-        if(k!==selKey||vals[k]===undefined||vals[k]==="")return null;
-        const barH=Math.max((vals[k]/maxV)*100,4); // %
-        // x position: centre of bar slot
-        const slotW=100/keys.length;
-        const leftPct=slotW*i+slotW/2;
-        return(
-          <span key={"lbl"+k} style={{
-            position:"absolute",
-            bottom:`${BAR_H*(barH/100)+4}px`,
-            left:`${leftPct}%`,
-            transform:"translateX(-50%)",
-            fontSize:9,letterSpacing:1.5,color:"#F2F2F2",fontWeight:500,
-            whiteSpace:"nowrap",pointerEvents:"none",zIndex:2
-          }}>{typeof vals[k]==="number"?vals[k].toFixed(vals[k]%1===0?0:1):vals[k]}</span>
-        );
-      })}
-
+    <div style={{flex:1,position:"relative",height:BAR_H,display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
       {/* bars */}
       <div style={{display:"flex",alignItems:"flex-end",gap:2,height:BAR_H,width:"100%"}}>
         {keys.map((k,i)=>{
           const v=vals[k];
           const isSel=k===selKey;
           if(v===undefined||v==="")
-            return<div key={k} style={{flex:1,height:3,background:"#161616",borderRadius:"1px 1px 0 0"}}/>;
+            return<div key={k} style={{flex:1,height:3,background:"#1A1A1A",borderRadius:"1px 1px 0 0"}}/>;
           const bh=Math.max((v/maxV)*100,4);
           const opacity=isSel?1:0.18+((i/keys.length)*0.62);
           return(
             <div key={k} onClick={()=>onSelect(k)} style={{
               flex:1,height:`${bh}%`,background:"#F2F2F2",
-              borderRadius:"1px 1px 0 0",opacity,cursor:"pointer",
-              boxShadow:isSel?"0 0 8px rgba(242,242,242,0.25)":undefined
+              borderRadius:"1px 1px 0 0",
+              opacity,
+              cursor:"pointer"
             }}/>
           );
         })}
@@ -941,18 +945,26 @@ function NumberOnlyCard({h,vmap,periodKeys,borderStyle,resetKey}){
   }
   const labelText=labelForKey(selKey);
 
+  const hasData=periodKeys.some(k=>vmap[k]!==undefined&&vmap[k]!=="");
+
   return(
     <div style={{padding:"18px 0",borderBottom:borderStyle}}>
       <span style={{fontSize:11,fontWeight:500,color:T.text,letterSpacing:3,textTransform:"uppercase"}}>{h.label}</span>
-      <div style={{display:"flex",gap:20,alignItems:"flex-end",marginTop:18}}>
-        {/* left: big number + Today label */}
-        <div style={{flexShrink:0}}>
-          <div style={{fontSize:52,fontWeight:200,letterSpacing:-2,lineHeight:1,color:T.text}}>{selVal!==null?selVal:"—"}</div>
-          <div style={{fontSize:9,letterSpacing:3,textTransform:"uppercase",color:"#3A3A3A",marginTop:4}}>{labelText}</div>
+      {hasData?(
+        <div style={{display:"flex",gap:20,alignItems:"flex-end",marginTop:18}}>
+          {/* left: big number + date label */}
+          <div style={{flexShrink:0}}>
+            <div style={{fontSize:52,fontWeight:200,letterSpacing:-2,lineHeight:1,color:T.text}}>{selVal!==null?selVal:"—"}</div>
+            <div style={{fontSize:9,letterSpacing:3,textTransform:"uppercase",color:"#3A3A3A",marginTop:4}}>{labelText}</div>
+          </div>
+          {/* right: interactive bar chart */}
+          <MiniBars vals={vmap} keys={periodKeys} selKey={selKey} onSelect={setSelKey}/>
         </div>
-        {/* right: interactive bar chart */}
-        <MiniBars vals={vmap} keys={periodKeys} selKey={selKey} onSelect={setSelKey}/>
-      </div>
+      ):(
+        <div style={{marginTop:18,height:52,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <span style={{fontSize:9,letterSpacing:3,color:"#2A2A2A",textTransform:"uppercase"}}>No data</span>
+        </div>
+      )}
     </div>
   );
 }
