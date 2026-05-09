@@ -99,9 +99,9 @@
     // type:"number"                        → Number
     const DEFAULT_HABITS = [
       { id:"habit_1", label:"Workout",       type:"bool",   restAllowed:true,  streakHabit:false, trackChange:false, trackAverage:false, createdAt:null },
-      { id:"habit_2", label:"Water (L)",     type:"number", restAllowed:false, streakHabit:false, trackChange:false, trackAverage:false, createdAt:null },
+      { id:"habit_2", label:"Water (Ltr)",   type:"number", restAllowed:false, streakHabit:false, trackChange:false, trackAverage:false, createdAt:null },
       { id:"habit_3", label:"No Fap",        type:"bool",   restAllowed:false, streakHabit:true,  trackChange:false, trackAverage:false, createdAt:null },
-      { id:"habit_4", label:"Sleep (hrs)",   type:"number", restAllowed:false, streakHabit:false, trackChange:false, trackAverage:true,  createdAt:null },
+      { id:"habit_4", label:"Sleep (hr)",    type:"number", restAllowed:false, streakHabit:false, trackChange:false, trackAverage:true,  createdAt:null },
       { id:"habit_5", label:"Weight (kg)",   type:"number", restAllowed:false, streakHabit:false, trackChange:true,  trackAverage:false, createdAt:null },
       { id:"habit_6", label:"Wake Up Early", type:"bool",   restAllowed:false, streakHabit:false, trackChange:false, trackAverage:false, createdAt:null },
       { id:"habit_7", label:"No Drinking",   type:"bool",   restAllowed:false, streakHabit:true,  trackChange:false, trackAverage:false, createdAt:null },
@@ -452,85 +452,40 @@ function TodayScreen({data,setData,habits,setHabits,onClearAll,user,onMenuOpen,c
 
   function set(id,val,dk){setData(prev=>({...prev,[dk]:{...prev[dk],[id]:val}}));}
 
-  // sliding swipe — real-time drag with CSS transition like Report tab
-  const trackRef=useRef();
-  const swipeRef=useRef({sx:0,sy:0,lk:false,dragging:false});
-
-  function onSwipeStart(e){
-    const s=swipeRef.current;
-    s.sx=e.touches[0].clientX; s.sy=e.touches[0].clientY; s.lk=false; s.dragging=false;
-    if(trackRef.current) trackRef.current.style.transition="none";
-  }
-  function onSwipeMove(e){
-    const s=swipeRef.current;
-    const dx=e.touches[0].clientX-s.sx, dy=e.touches[0].clientY-s.sy;
-    if(!s.lk&&!s.dragging){
-      if(Math.abs(dy)>Math.abs(dx)+5){s.lk=true;return;}
-      if(Math.abs(dx)>6){s.dragging=true;}
-    }
-    if(s.lk)return;
-    if(s.dragging){
-      e.preventDefault();
-      if(trackRef.current) trackRef.current.style.transform=`translateX(calc(-33.333% + ${dx}px))`;
-    }
-  }
-  function onSwipeEnd(e){
-    const s=swipeRef.current;
-    if(trackRef.current){
-      trackRef.current.style.transition="transform .28s cubic-bezier(0.4,0,0.2,1)";
-      trackRef.current.style.transform="translateX(-33.333%)";
-    }
-    if(s.dragging){
-      const dx=e.changedTouches[0].clientX-s.sx;
-      if(Math.abs(dx)>40) setDateKey(offsetDate(dateKey,dx<0?1:-1));
-    }
-    s.dragging=false; s.lk=false;
-  }
-
-  const prevKey=offsetDate(dateKey,-1);
-  const nextKey=offsetDate(dateKey,1);
+  const dk=dateKey;
+  const dti=new Date(dk+"T12:00:00");
+  const visi=sortToday(habits.filter(h=>!h.createdAt||h.createdAt<=dk));
+  const dayi=data[dk]||{};
+  const loggi=visi.filter(h=>{const v=dayi[h.id];return h.type==="number"?(v!==undefined&&v!==""):v!==undefined;}).length;
 
   return(
-    <div style={{overflow:"hidden",width:"100%"}}>
-      <div ref={trackRef} style={{display:"flex",width:"300%",transform:"translateX(-33.333%)",willChange:"transform"}}
-        onTouchStart={onSwipeStart} onTouchMove={onSwipeMove} onTouchEnd={onSwipeEnd}>
-        {[prevKey,dateKey,nextKey].map((dk,pi)=>{
-          const dti=new Date(dk+"T12:00:00");
-          const visi=sortToday(habits.filter(h=>!h.createdAt||h.createdAt<=dk));
-          const dayi=data[dk]||{};
-          const loggi=visi.filter(h=>{const v=dayi[h.id];return h.type==="number"?(v!==undefined&&v!==""):v!==undefined;}).length;
-          return(
-            <div key={`${dk}-${pi}`} style={{width:"33.333%",flexShrink:0,paddingBottom:100}}>
-              <div style={{padding:"52px 24px 20px"}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-                  <IBtn icon="chevL" onClick={()=>setDateKey(offsetDate(dk,-1))}/>
-                  <div style={{textAlign:"center"}}>
-                    <Lbl style={{display:"block",color:T.textMid}}>{DAYS[dti.getDay()]}</Lbl>
-                    <div style={{fontSize:26,fontWeight:300,letterSpacing:-0.5,color:T.text,marginTop:4}}>
-                      {dti.getDate()} {MONTHS[dti.getMonth()]}
-                    </div>
-                  </div>
-                  <IBtn icon="chevR" onClick={()=>setDateKey(offsetDate(dk,1))}/>
-                </div>
-                <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  <div style={{height:1,background:T.border,flex:1,position:"relative",overflow:"hidden"}}>
-                    <div style={{position:"absolute",top:0,left:0,height:"100%",background:T.text,width:`${visi.length?(loggi/visi.length)*100:0}%`,transition:"width 0.4s ease"}}/>
-                  </div>
-                  <Lbl>{loggi} / {visi.length}</Lbl>
-                  {pi===1&&<button onClick={onMenuOpen} style={{width:32,height:32,background:"#161616",border:"1px solid #1E1E1E",borderRadius:8,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:5,flexShrink:0,padding:"6px"}}>
-                    <div style={{width:14,height:1.5,background:"#888",borderRadius:1}}/>
-                    <div style={{width:14,height:1.5,background:"#888",borderRadius:1}}/>
-                    <div style={{width:14,height:1.5,background:"#888",borderRadius:1}}/>
-                  </button>}
-                </div>
-              </div>
-              <Hr/>
-              <div style={{display:"flex",flexDirection:"column"}}>
-                {visi.map((h,i)=><HabitRow key={h.id} habit={h} value={dayi[h.id]} onChange={v=>set(h.id,v,dk)} isLast={i===visi.length-1}/>)}
-              </div>
+    <div style={{width:"100%",paddingBottom:100}}>
+      <div style={{padding:"52px 24px 20px"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+          <IBtn icon="chevL" onClick={()=>setDateKey(offsetDate(dk,-1))}/>
+          <div style={{textAlign:"center"}}>
+            <Lbl style={{display:"block",color:T.textMid}}>{DAYS[dti.getDay()]}</Lbl>
+            <div style={{fontSize:26,fontWeight:300,letterSpacing:-0.5,color:T.text,marginTop:4}}>
+              {dti.getDate()} {MONTHS[dti.getMonth()]}
             </div>
-          );
-        })}
+          </div>
+          <IBtn icon="chevR" onClick={()=>setDateKey(offsetDate(dk,1))}/>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{height:1,background:T.border,flex:1,position:"relative",overflow:"hidden"}}>
+            <div style={{position:"absolute",top:0,left:0,height:"100%",background:T.text,width:`${visi.length?(loggi/visi.length)*100:0}%`,transition:"width 0.4s ease"}}/>
+          </div>
+          <Lbl>{loggi} / {visi.length}</Lbl>
+          <button onClick={onMenuOpen} style={{width:32,height:32,background:"#161616",border:"1px solid #1E1E1E",borderRadius:8,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:5,flexShrink:0,padding:"6px"}}>
+            <div style={{width:14,height:1.5,background:"#888",borderRadius:1}}/>
+            <div style={{width:14,height:1.5,background:"#888",borderRadius:1}}/>
+            <div style={{width:14,height:1.5,background:"#888",borderRadius:1}}/>
+          </button>
+        </div>
+      </div>
+      <Hr/>
+      <div style={{display:"flex",flexDirection:"column"}}>
+        {visi.map((h,i)=><HabitRow key={h.id} habit={h} value={dayi[h.id]} onChange={v=>set(h.id,v,dk)} isLast={i===visi.length-1}/>)}
       </div>
     </div>
   );
@@ -594,118 +549,67 @@ function MonthScreen({data,habits}){
   const goNext=()=>{setSel(null);const n=nextMo(yr,mo);setYr(n.y);setMo(n.m);};
   const goPrev=()=>{setSel(null);const p=prevMo(yr,mo);setYr(p.y);setMo(p.m);};
 
-  // sliding swipe
-  const trackRef=useRef();
-  const swipeRef=useRef({sx:0,sy:0,lk:false,dragging:false});
-
-  function onSwipeStart(e){
-    const s=swipeRef.current;
-    s.sx=e.touches[0].clientX; s.sy=e.touches[0].clientY; s.lk=false; s.dragging=false;
-    if(trackRef.current) trackRef.current.style.transition="none";
-  }
-  function onSwipeMove(e){
-    const s=swipeRef.current;
-    const dx=e.touches[0].clientX-s.sx, dy=e.touches[0].clientY-s.sy;
-    if(!s.lk&&!s.dragging){
-      if(Math.abs(dy)>Math.abs(dx)+5){s.lk=true;return;}
-      if(Math.abs(dx)>6){s.dragging=true;}
-    }
-    if(s.lk)return;
-    if(s.dragging){
-      e.preventDefault();
-      if(trackRef.current) trackRef.current.style.transform=`translateX(calc(-33.333% + ${dx}px))`;
-    }
-  }
-  function onSwipeEnd(e){
-    const s=swipeRef.current;
-    if(trackRef.current){
-      trackRef.current.style.transition="transform .28s cubic-bezier(0.4,0,0.2,1)";
-      trackRef.current.style.transform="translateX(-33.333%)";
-    }
-    if(s.dragging){
-      const dx=e.changedTouches[0].clientX-s.sx;
-      if(Math.abs(dx)>40) dx<0?goNext():goPrev();
-    }
-    s.dragging=false; s.lk=false;
-  }
-
-  // build 3 panels: prev, current, next month
-  const p=prevMo(yr,mo), n=nextMo(yr,mo);
-  const panels=[{y:p.y,m:p.m},{y:yr,m:mo},{y:n.y,m:n.m}];
-
-  function renderPanel({y,m},pi){
-    const dim=getDaysInMonth(y,m);
-    const fDay=new Date(y,m,1).getDay();
-    const isCurrentPanel=(pi===1);
-    const prevFn=()=>{setSel(null);const pp=prevMo(y,m);setYr(pp.y);setMo(pp.m);};
-    const nextFn=()=>{setSel(null);const nn=nextMo(y,m);setYr(nn.y);setMo(nn.m);};
-    return(
-      <div key={`${y}-${m}-${pi}`} style={{width:"33.333%",flexShrink:0,paddingBottom:100}}>
-        <div style={{padding:"52px 24px 24px"}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:0}}>
-            <IBtn icon="chevL" onClick={prevFn}/>
-            <div style={{textAlign:"center"}}>
-              <Lbl style={{display:"block",color:T.textMid}}>{String(y)}</Lbl>
-              <div style={{fontSize:26,fontWeight:300,letterSpacing:-0.5,color:T.text,marginTop:4}}>{MONTHS[m]}</div>
-            </div>
-            <IBtn icon="chevR" onClick={nextFn}/>
-          </div>
-        </div>
-        <Hr/>
-        <div style={{padding:"20px 16px"}}>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",marginBottom:8}}>
-            {["S","M","T","W","T","F","S"].map((d,i)=><div key={i} style={{textAlign:"center",fontSize:9,color:T.textLow,letterSpacing:2,padding:"4px 0",fontWeight:500}}>{d}</div>)}
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
-            {Array(fDay).fill(null).map((_,i)=><div key={`e${i}`}/>)}
-            {Array(dim).fill(null).map((_,i)=>{
-              const d=i+1;
-              const k=`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-              const st=getStatus(d,y,m); const iT=k===ts; const iS=isCurrentPanel&&k===sel;
-              const dot=st&&(st.done>0||st.missed>0)?(st.missed>0?T.textLow:T.textMid):null;
-              return(
-                <div key={d} onClick={()=>isCurrentPanel&&setSel(iS?null:k)} style={{aspectRatio:"1",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,borderRadius:8,cursor:"pointer",background:iS?T.surfaceHi:iT?T.surface:"transparent",border:iT?`1px solid ${T.borderHi}`:"1px solid transparent"}}>
-                  <span style={{fontSize:13,color:iT?T.text:T.textMid,fontWeight:iT?500:300}}>{d}</span>
-                  {dot&&<div style={{width:4,height:4,borderRadius:"50%",background:dot}}/>}
-                </div>
-              );
-            })}
-          </div>
-          {isCurrentPanel&&sel&&(()=>{
-            const sd=data[sel];
-            const visH=sortToday(habits.filter(h=>!h.createdAt||h.createdAt<=sel));
-            return(
-              <div style={{marginTop:24}}>
-                <Hr/>
-                <div style={{paddingTop:20}}>
-                  <Lbl>{new Date(sel+"T12:00:00").toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})}</Lbl>
-                  <div style={{marginTop:16}}>
-                    {sd?visH.map((h,i)=>{
-                      const v=sd[h.id];
-                      const unit=h.type==="number"?extractUnit(h.label):null;
-                      const numStr=v!==undefined&&v!==""?`${v}${unit?`\u202f${unit}`:""}`:"-";
-                      const dv=h.type==="number"?numStr:(v==="Y"?"Done":v==="N"?"Missed":v==="R"?"Rest":"—");
-                      return <div key={h.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"13px 0",borderBottom:i<visH.length-1?`1px solid ${T.border}`:"none"}}><span style={{fontSize:11,letterSpacing:3,textTransform:"uppercase",color:T.textMid,fontWeight:500}}>{h.label}</span><Lbl style={{color:v?T.text:T.textLow}}>{dv}</Lbl></div>;
-                    }):<Lbl>No data logged</Lbl>}
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
-        </div>
-      </div>
-    );
-  }
+  const dim=getDaysInMonth(yr,mo);
+  const fDay=new Date(yr,mo,1).getDay();
 
   return(
-    <div style={{overflow:"hidden",width:"100%"}}>
-      <div ref={trackRef} style={{display:"flex",width:"300%",transform:"translateX(-33.333%)",willChange:"transform"}}
-        onTouchStart={onSwipeStart} onTouchMove={onSwipeMove} onTouchEnd={onSwipeEnd}>
-        {panels.map((p,pi)=>renderPanel(p,pi))}
+    <div style={{width:"100%",paddingBottom:100}}>
+      <div style={{padding:"52px 24px 24px"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:0}}>
+          <IBtn icon="chevL" onClick={goPrev}/>
+          <div style={{textAlign:"center"}}>
+            <Lbl style={{display:"block",color:T.textMid}}>{String(yr)}</Lbl>
+            <div style={{fontSize:26,fontWeight:300,letterSpacing:-0.5,color:T.text,marginTop:4}}>{MONTHS[mo]}</div>
+          </div>
+          <IBtn icon="chevR" onClick={goNext}/>
+        </div>
+      </div>
+      <Hr/>
+      <div style={{padding:"20px 16px"}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",marginBottom:8}}>
+          {["S","M","T","W","T","F","S"].map((d,i)=><div key={i} style={{textAlign:"center",fontSize:9,color:T.textLow,letterSpacing:2,padding:"4px 0",fontWeight:500}}>{d}</div>)}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
+          {Array(fDay).fill(null).map((_,i)=><div key={`e${i}`}/>)}
+          {Array(dim).fill(null).map((_,i)=>{
+            const d=i+1;
+            const k=`${yr}-${String(mo+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+            const st=getStatus(d,yr,mo); const iT=k===ts; const iS=k===sel;
+            const dot=st&&(st.done>0||st.missed>0)?(st.missed>0?T.textLow:T.textMid):null;
+            return(
+              <div key={d} onClick={()=>setSel(iS?null:k)} style={{aspectRatio:"1",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,borderRadius:8,cursor:"pointer",background:iS?T.surfaceHi:iT?T.surface:"transparent",border:iT?`1px solid ${T.borderHi}`:"1px solid transparent"}}>
+                <span style={{fontSize:13,color:iT?T.text:T.textMid,fontWeight:iT?500:300}}>{d}</span>
+                {dot&&<div style={{width:4,height:4,borderRadius:"50%",background:dot}}/>}
+              </div>
+            );
+          })}
+        </div>
+        {sel&&(()=>{
+          const sd=data[sel];
+          const visH=sortToday(habits.filter(h=>!h.createdAt||h.createdAt<=sel));
+          return(
+            <div style={{marginTop:24}}>
+              <Hr/>
+              <div style={{paddingTop:20}}>
+                <Lbl>{new Date(sel+"T12:00:00").toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})}</Lbl>
+                <div style={{marginTop:16}}>
+                  {sd?visH.map((h,i)=>{
+                    const v=sd[h.id];
+                    const unit=h.type==="number"?extractUnit(h.label):null;
+                    const numStr=v!==undefined&&v!==""?`${v}${unit?` ${unit}`:""}`:"-";
+                    const dv=h.type==="number"?numStr:(v==="Y"?"Done":v==="N"?"Missed":v==="R"?"Rest":"—");
+                    return <div key={h.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"13px 0",borderBottom:i<visH.length-1?`1px solid ${T.border}`:"none"}}><span style={{fontSize:11,letterSpacing:3,textTransform:"uppercase",color:T.textMid,fontWeight:500}}>{h.label}</span><Lbl style={{color:v?T.text:T.textLow}}>{dv}</Lbl></div>;
+                  }):<Lbl>No data logged</Lbl>}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
 }
+
 
 // ════════════════════════════════════════════════════════════════
 //  STATS — New finalized Report design
@@ -1244,7 +1148,7 @@ function StreakPanel({habits,data}){
 // ── Main StatsScreen ───────────────────────────────────────────
 function StatsScreen({data,habits}){
   const now=new Date();
-  const [activeTab,setActiveTab]=useState(0); // 0=Streaks 1=Weekly 2=Monthly
+  const [activeTab,setActiveTab]=useState(0); // 0=Weekly 1=Monthly 2=Streaks
   const [wY,setWY]=useState(now.getFullYear()); const [wM,setWM]=useState(now.getMonth());
   const [wI,setWI]=useState(Math.floor((now.getDate()-1)/7));
   const [mY,setMY]=useState(now.getFullYear()); const [mM,setMM]=useState(now.getMonth());
@@ -1257,11 +1161,11 @@ function StatsScreen({data,habits}){
 
   useEffect(()=>{
     // When switching TO monthly tab, bump reset key so charts snap back to current day
-    if(activeTab===2&&prevTabRef.current!==2){
+    if(activeTab===1&&prevTabRef.current!==1){
       setMonthResetKey(k=>k+1);
     }
     // When switching TO weekly tab, bump reset key so charts snap back to today
-    if(activeTab===1&&prevTabRef.current!==1){
+    if(activeTab===0&&prevTabRef.current!==0){
       setWeekResetKey(k=>k+1);
     }
     prevTabRef.current=activeTab;
@@ -1298,7 +1202,7 @@ function StatsScreen({data,habits}){
     }
   }
 
-  const TABS=["Streaks","Weekly","Monthly"];
+  const TABS=["Weekly","Monthly","Streaks"];
 
   return(
     <div style={{paddingBottom:100}}>
@@ -1327,11 +1231,6 @@ function StatsScreen({data,habits}){
         onTouchStart={onSwipeStart} onTouchMove={onSwipeMove} onTouchEnd={onSwipeEnd}>
         <div ref={trackRef} style={{display:"flex",transition:"transform .32s cubic-bezier(0.4,0,0.2,1)",transform:`translateX(-${activeTab*100}%)`,willChange:"transform"}}>
 
-          {/* ── STREAKS panel ── */}
-          <div style={{minWidth:"100%",flexShrink:0,padding:"0 24px 40px"}}>
-            <StreakPanel habits={habits} data={data}/>
-          </div>
-
           {/* ── WEEKLY panel ── */}
           <div style={{minWidth:"100%",flexShrink:0,padding:"0 24px 40px"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"20px 0 6px"}}>
@@ -1358,6 +1257,11 @@ function StatsScreen({data,habits}){
               </button>
             </div>
             <PeriodHabits habits={habits} data={data} periodKeys={mKeys} isWeekly={false} resetKey={monthResetKey}/>
+          </div>
+
+          {/* ── STREAKS panel ── */}
+          <div style={{minWidth:"100%",flexShrink:0,padding:"0 24px 40px"}}>
+            <StreakPanel habits={habits} data={data}/>
           </div>
 
         </div>
