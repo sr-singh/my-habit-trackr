@@ -98,11 +98,15 @@
     // restAllowed:false, streakHabit:true  → Done/Miss/Streak
     // type:"number"                        → Number
     const DEFAULT_HABITS = [
-      { id:"habit_1", label:"Gym",         type:"bool",   restAllowed:true,  streakHabit:false, trackChange:false, trackAverage:false, createdAt:null },
-      { id:"habit_2", label:"Water (3L)",  type:"bool",   restAllowed:false, streakHabit:false, trackChange:false, trackAverage:false, createdAt:null },
-      { id:"habit_3", label:"No Fap",      type:"bool",   restAllowed:false, streakHabit:true,  trackChange:false, trackAverage:false, createdAt:null },
-      { id:"habit_4", label:"Sleep (hrs)", type:"number", restAllowed:false, streakHabit:false, trackChange:false, trackAverage:true,  createdAt:null },
-      { id:"habit_5", label:"Weight (kg)", type:"number", restAllowed:false, streakHabit:false, trackChange:true,  trackAverage:false, createdAt:null },
+      { id:"habit_1", label:"Workout",       type:"bool",   restAllowed:true,  streakHabit:false, trackChange:false, trackAverage:false, createdAt:null },
+      { id:"habit_2", label:"Water (L)",     type:"number", restAllowed:false, streakHabit:false, trackChange:false, trackAverage:true,  createdAt:null },
+      { id:"habit_3", label:"No Fap",        type:"bool",   restAllowed:false, streakHabit:true,  trackChange:false, trackAverage:false, createdAt:null },
+      { id:"habit_4", label:"Sleep (hrs)",   type:"number", restAllowed:false, streakHabit:false, trackChange:false, trackAverage:true,  createdAt:null },
+      { id:"habit_5", label:"Weight (kg)",   type:"number", restAllowed:false, streakHabit:false, trackChange:true,  trackAverage:false, createdAt:null },
+      { id:"habit_6", label:"Wake Up Early", type:"bool",   restAllowed:false, streakHabit:false, trackChange:false, trackAverage:false, createdAt:null },
+      { id:"habit_7", label:"No Drinking",   type:"bool",   restAllowed:false, streakHabit:true,  trackChange:false, trackAverage:false, createdAt:null },
+      { id:"habit_8", label:"No Smoking",    type:"bool",   restAllowed:false, streakHabit:true,  trackChange:false, trackAverage:false, createdAt:null },
+      { id:"habit_9", label:"No Junk",       type:"bool",   restAllowed:false, streakHabit:true,  trackChange:false, trackAverage:false, createdAt:null },
     ];
 
     async function loadData() {
@@ -276,7 +280,7 @@ function HabitForm({initial,onSave,onCancel,saveLabel}){
   return(
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <input ref={ref} value={label} onChange={e=>setLabel(e.target.value)}
-        onKeyDown={e=>e.key==="Enter"&&submit()} placeholder="Habit name..."
+        onKeyDown={e=>e.key==="Enter"&&submit()} placeholder={type==="number"?"Habit Name (Unit)":"Habit Name"}
         style={{background:T.surfaceHi,border:`1px solid ${T.borderHi}`,borderRadius:8,padding:"11px 14px",color:T.text,fontSize:11,fontFamily:"inherit",outline:"none",letterSpacing:3,textTransform:"uppercase"}}/>
       {/* Type toggle */}
       <div style={{display:"flex",gap:6}}>
@@ -454,8 +458,25 @@ function TodayScreen({data,setData,habits,setHabits,onClearAll,user,onMenuOpen,c
 
   const logged=visible.filter(h=>{const v=day[h.id];return h.type==="number"?(v!==undefined&&v!==""):v!==undefined;}).length;
 
+  // swipe left/right to change date
+  const swipeRef=useRef({sx:0,sy:0,lk:false});
+  function onSwipeStart(e){swipeRef.current={sx:e.touches[0].clientX,sy:e.touches[0].clientY,lk:false};}
+  function onSwipeMove(e){
+    const s=swipeRef.current;
+    if(s.lk)return;
+    const dx=e.touches[0].clientX-s.sx,dy=e.touches[0].clientY-s.sy;
+    if(Math.abs(dx)>Math.abs(dy)&&Math.abs(dx)>8){s.lk=true;e.preventDefault();}
+  }
+  function onSwipeEnd(e){
+    const s=swipeRef.current;
+    const dx=e.changedTouches[0].clientX-s.sx,dy=e.changedTouches[0].clientY-s.sy;
+    if(Math.abs(dx)>Math.abs(dy)&&Math.abs(dx)>40){
+      setDateKey(offsetDate(dateKey,dx<0?1:-1));
+    }
+  }
+
   return(
-    <div style={{paddingBottom:100}}>
+    <div style={{paddingBottom:100}} onTouchStart={onSwipeStart} onTouchMove={onSwipeMove} onTouchEnd={onSwipeEnd}>
       <div style={{padding:"52px 24px 20px"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
           <IBtn icon="chevL" onClick={()=>setDateKey(offsetDate(dateKey,-1))}/>
@@ -541,11 +562,28 @@ function MonthScreen({data,habits}){
     const vis=bh.filter(h=>!h.createdAt||h.createdAt<=k);
     return{done:vis.filter(h=>e[h.id]==="Y").length,missed:vis.filter(h=>e[h.id]==="N").length,key:k,raw:e};
   }
-  const prev=()=>mo===0?(setYr(y=>y-1),setMo(11)):setMo(m=>m-1);
-  const next=()=>mo===11?(setYr(y=>y+1),setMo(0)):setMo(m=>m+1);
+  const prev=()=>{setSel(null);mo===0?(setYr(y=>y-1),setMo(11)):setMo(m=>m-1);};
+  const next=()=>{setSel(null);mo===11?(setYr(y=>y+1),setMo(0)):setMo(m=>m+1);};
+
+  // swipe left/right to change month
+  const swipeRef=useRef({sx:0,sy:0,lk:false});
+  function onSwipeStart(e){swipeRef.current={sx:e.touches[0].clientX,sy:e.touches[0].clientY,lk:false};}
+  function onSwipeMove(e){
+    const s=swipeRef.current;
+    if(s.lk)return;
+    const dx=e.touches[0].clientX-s.sx,dy=e.touches[0].clientY-s.sy;
+    if(Math.abs(dx)>Math.abs(dy)&&Math.abs(dx)>8){s.lk=true;e.preventDefault();}
+  }
+  function onSwipeEnd(e){
+    const s=swipeRef.current;
+    const dx=e.changedTouches[0].clientX-s.sx,dy=e.changedTouches[0].clientY-s.sy;
+    if(Math.abs(dx)>Math.abs(dy)&&Math.abs(dx)>40){
+      dx<0?next():prev();
+    }
+  }
 
   return(
-    <div style={{paddingBottom:100}}>
+    <div style={{paddingBottom:100}} onTouchStart={onSwipeStart} onTouchMove={onSwipeMove} onTouchEnd={onSwipeEnd}>
       <div style={{padding:"52px 24px 24px"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:0}}>
           <IBtn icon="chevL" onClick={prev}/>
@@ -587,7 +625,8 @@ function MonthScreen({data,habits}){
                 <div style={{marginTop:16}}>
                   {sd?visH.map((h,i)=>{
                     const v=sd[h.id];
-                    const dv=h.type==="number"?(v?`${v}`:"—"):(v==="Y"?"Done":v==="N"?"Missed":v==="R"?"Rest":"—");
+                    const unit=h.type==="number"?extractUnit(h.label):null;
+                    const dv=h.type==="number"?(v!==undefined&&v!==""?`${v}${unit?" "+unit:""}`:"-"):(v==="Y"?"Done":v==="N"?"Missed":v==="R"?"Rest":"—");
                     return <div key={h.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"13px 0",borderBottom:i<visH.length-1?`1px solid ${T.border}`:"none"}}><span style={{fontSize:11,letterSpacing:3,textTransform:"uppercase",color:T.textMid,fontWeight:500}}>{h.label}</span><Lbl style={{color:v?T.text:T.textLow}}>{dv}</Lbl></div>;
                   }):<Lbl>No data logged</Lbl>}
                 </div>
@@ -629,6 +668,12 @@ function calcBestStreak(id,data){
 }
 
 // ── Stat number cell ───────────────────────────────────────────
+// ── Extract unit from label e.g. "Water (L)" → "L" ──────────────
+function extractUnit(label){
+  const m=label&&label.match(/\(([^)]+)\)\s*$/);
+  return m?m[1]:null;
+}
+
 function StatNum({value,sub}){
   return(
     <div style={{textAlign:"center"}}>
@@ -947,6 +992,8 @@ function NumberOnlyCard({h,vmap,periodKeys,borderStyle,resetKey}){
 
   const hasData=periodKeys.some(k=>vmap[k]!==undefined&&vmap[k]!=="");
 
+  const unit=extractUnit(h.label);
+
   return(
     <div style={{padding:"18px 0",borderBottom:borderStyle}}>
       <span style={{fontSize:11,fontWeight:500,color:T.text,letterSpacing:3,textTransform:"uppercase"}}>{h.label}</span>
@@ -954,7 +1001,10 @@ function NumberOnlyCard({h,vmap,periodKeys,borderStyle,resetKey}){
         <div style={{display:"flex",gap:20,alignItems:"flex-end",marginTop:18}}>
           {/* left: big number + date label */}
           <div style={{flexShrink:0}}>
-            <div style={{fontSize:52,fontWeight:200,letterSpacing:-2,lineHeight:1,color:T.text}}>{selVal!==null?selVal:"—"}</div>
+            <div style={{display:"flex",alignItems:"baseline",gap:6}}>
+              <div style={{fontSize:52,fontWeight:200,letterSpacing:-2,lineHeight:1,color:T.text}}>{selVal!==null?selVal:"—"}</div>
+              {selVal!==null&&unit&&<span style={{fontSize:10,letterSpacing:3,textTransform:"uppercase",color:"#3A3A3A"}}>{unit}</span>}
+            </div>
             <div style={{fontSize:9,letterSpacing:3,textTransform:"uppercase",color:"#3A3A3A",marginTop:4}}>{labelText}</div>
           </div>
           {/* right: interactive bar chart */}
@@ -1021,6 +1071,8 @@ function PeriodHabits({habits,data,periodKeys,isWeekly,resetKey}){
           const avg=vals.length?(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1):"—";
           const min=vals.length?Math.min(...vals).toFixed(1):"—";
           const max=vals.length?Math.max(...vals).toFixed(1):"—";
+          const unit=extractUnit(h.label);
+          const sub=(s)=>unit?`${s} (${unit})`:s;
           return(
             <div key={h.id} style={{padding:"18px 0",borderBottom:borderStyle}}>
               <span style={{fontSize:11,fontWeight:500,color:T.text,letterSpacing:3,textTransform:"uppercase"}}>{h.label}</span>
@@ -1029,9 +1081,9 @@ function PeriodHabits({habits,data,periodKeys,isWeekly,resetKey}){
                 :<MonthlyScrubChart vals={vmap} keys={periodKeys} totalDays={periodKeys.length} resetKey={resetKey}/>
               }
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:4,marginTop:14,paddingTop:14,borderTop:`1px solid ${T.border}`}}>
-                <StatNum value={min} sub="Min"/>
-                <StatNum value={max} sub="Max"/>
-                <StatNum value={avg} sub="Avg"/>
+                <StatNum value={min} sub={sub("Min")}/>
+                <StatNum value={max} sub={sub("Max")}/>
+                <StatNum value={avg} sub={sub("Avg")}/>
               </div>
             </div>
           );
@@ -1043,6 +1095,8 @@ function PeriodHabits({habits,data,periodKeys,isWeekly,resetKey}){
           const first=vals.length?vals[0].toFixed(1):"—";
           const last=vals.length?vals[vals.length-1].toFixed(1):"—";
           const chg=vals.length>1?+(vals[vals.length-1]-vals[0]).toFixed(1):null;
+          const unit=extractUnit(h.label);
+          const sub=(s)=>unit?`${s} (${unit})`:s;
           return(
             <div key={h.id} style={{padding:"18px 0",borderBottom:borderStyle}}>
               <span style={{fontSize:11,fontWeight:500,color:T.text,letterSpacing:3,textTransform:"uppercase"}}>{h.label}</span>
@@ -1051,9 +1105,9 @@ function PeriodHabits({habits,data,periodKeys,isWeekly,resetKey}){
                 :<MonthlyScrubChart vals={vmap} keys={periodKeys} totalDays={periodKeys.length} resetKey={resetKey}/>
               }
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:4,marginTop:14,paddingTop:14,borderTop:`1px solid ${T.border}`}}>
-                <StatNum value={first} sub="Start"/>
-                <StatNum value={last} sub="End"/>
-                <StatNum value={chg!==null?`${chg>0?"+":""}${chg}`:"—"} sub="Change"/>
+                <StatNum value={first} sub={sub("Start")}/>
+                <StatNum value={last} sub={sub("End")}/>
+                <StatNum value={chg!==null?`${chg>0?"+":""}${chg}`:"—"} sub={unit?`Change (${unit})`:"Change"}/>
               </div>
             </div>
           );
