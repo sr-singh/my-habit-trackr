@@ -219,24 +219,20 @@ function IBtn({icon,onClick,size=34,is=16,active=false}){
 
 // ── Sort helpers ───────────────────────────────────────────────
 // Today: rest → bool → number(change-tracker last)
-function sortToday(habits){
-  return [...habits].sort((a,b)=>{
-    const rank=h=>h.type==="number"?(h.trackChange?4:3):h.restAllowed?0:1;
-    return rank(a)-rank(b);
-  });
+// Shared rank: rest → bool → streak → change → average → number
+function habitRank(h){
+  if(h.type==="bool"&&h.restAllowed)    return 0; // Done/Miss/Rest
+  if(h.type==="bool"&&!h.streakHabit)  return 1; // Done/Miss
+  if(h.type==="bool"&&h.streakHabit)   return 2; // Done/Miss/Streak
+  if(h.type==="number"&&h.trackChange)  return 3; // Number / Change
+  if(h.type==="number"&&h.trackAverage) return 4; // Number / Average
+  return 5;                                        // Number (plain)
 }
-// Stats weekly/monthly: change → average → rest bool → plain number → plain bool
+function sortToday(habits){
+  return [...habits].sort((a,b)=>habitRank(a)-habitRank(b));
+}
 function sortStats(habits){
-  return [...habits].sort((a,b)=>{
-    const rank=h=>{
-      if(h.type==="number"&&h.trackChange) return 0;
-      if(h.type==="number"&&h.trackAverage) return 1;
-      if(h.type==="bool"&&h.restAllowed) return 2;
-      if(h.type==="number") return 3;
-      return 4;
-    };
-    return rank(a)-rank(b);
-  });
+  return [...habits].sort((a,b)=>habitRank(a)-habitRank(b));
 }
 
 // ════════════════════════════════════════════════════════════════
