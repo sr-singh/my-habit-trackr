@@ -24,6 +24,9 @@
   </style>
 
   <script>
+    // ── Disable browser scroll restoration ──────────────────────
+    if('scrollRestoration' in history) history.scrollRestoration = 'manual';
+
     // ── PWA: inject icons as data URIs ──────────────────────────
     (function(){
       var icons = {
@@ -219,20 +222,24 @@ function IBtn({icon,onClick,size=34,is=16,active=false}){
 
 // ── Sort helpers ───────────────────────────────────────────────
 // Today: rest → bool → number(change-tracker last)
-// Shared rank: rest → bool → streak → change → average → number
-function habitRank(h){
-  if(h.type==="bool"&&h.restAllowed)    return 0; // Done/Miss/Rest
-  if(h.type==="bool"&&!h.streakHabit)  return 1; // Done/Miss
-  if(h.type==="bool"&&h.streakHabit)   return 2; // Done/Miss/Streak
-  if(h.type==="number"&&h.trackChange)  return 3; // Number / Change
-  if(h.type==="number"&&h.trackAverage) return 4; // Number / Average
-  return 5;                                        // Number (plain)
-}
 function sortToday(habits){
-  return [...habits].sort((a,b)=>habitRank(a)-habitRank(b));
+  return [...habits].sort((a,b)=>{
+    const rank=h=>h.type==="number"?(h.trackChange?4:3):h.restAllowed?0:1;
+    return rank(a)-rank(b);
+  });
 }
+// Stats weekly/monthly: change → average → rest bool → plain number → plain bool
 function sortStats(habits){
-  return [...habits].sort((a,b)=>habitRank(a)-habitRank(b));
+  return [...habits].sort((a,b)=>{
+    const rank=h=>{
+      if(h.type==="number"&&h.trackChange) return 0;
+      if(h.type==="number"&&h.trackAverage) return 1;
+      if(h.type==="bool"&&h.restAllowed) return 2;
+      if(h.type==="number") return 3;
+      return 4;
+    };
+    return rank(a)-rank(b);
+  });
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -881,8 +888,8 @@ function MonthlyScrubChart({vals,keys,totalDays,resetKey}){
           const isLast=i===pts.length-1;
           return(
             <circle key={i} cx={p.x.toFixed(1)} cy={p.y.toFixed(1)}
-              r={isLast?"3.5":"1.5"}
-              fill="#F2F2F2" fillOpacity={isLast?"1":"0.35"}
+              r={isLast?"3.0":"2.0"}
+              fill="#F2F2F2" fillOpacity={isLast?"1":"0.3"}
               style={{pointerEvents:"none"}}/>
           );
         })}
@@ -1762,7 +1769,7 @@ function App(){
                 {tab==="today" && <TodayScreen data={data} setData={handleSet} habits={habits} setHabits={handleSetHabits} onClearAll={clearAll} user={user} onMenuOpen={()=>setMenuOpen(true)} currentDateKey={currentDateKey} setCurrentDateKey={setCurrentDateKey}/>}
                 {tab==="month" && <MonthScreen key={monthKey} data={data} habits={habits}/>}
                 {tab==="stats" && <StatsScreen data={data} habits={habits}/>}
-                <Nav tab={tab} setTab={id=>{setTab(id);if(id==="today")setCurrentDateKey(todayKey());if(id==="month")setMonthKey(k=>k+1);}}/>
+                <Nav tab={tab} setTab={id=>{setTab(id);document.documentElement.scrollTop=0;document.body.scrollTop=0;if(id==="today")setCurrentDateKey(todayKey());if(id==="month")setMonthKey(k=>k+1);}}/>
               </>
           }
           {menuOpen && <UserMenu user={user} profile={profile} onClose={()=>setMenuOpen(false)} onSignOut={handleSignOut} onDeleteAccount={()=>{ setUID(null); setUser(null); setMenuOpen(false); setData({}); setHabits(DEFAULT_HABITS); }} habits={habits} setHabits={handleSetHabits} onClearAll={clearAll} currentDateKey={currentDateKey} data={data} setData={handleSet} onManageHabits={()=>setManagingHabits(true)}/>}
